@@ -1,0 +1,64 @@
+# =========================
+# ASP.NET Core Backend
+# =========================
+**/bin/
+**/obj/
+**/.vs/
+*.user
+*.suo
+
+# Database backups
+**/Backups/
+*.backup
+
+# =========================
+# React Frontend
+# =========================
+**/node_modules/
+**/dist/
+**/.vite/
+
+# =========================
+# Secrets / Environment
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Editor
+# =========================
+.vscode/
+
+# =========================
+# Logs
+# =========================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+
+
+# =========================
+# Local backup copies
+# =========================
+class-management-system-BACKUP-before-production-update/
+class-management-system-BACKUP-before-settings/
+
+# =========================
+# Release packages
+# =========================
+ClassManagement-Master-Release-v1.0/
+*.zip
+
+# =========================
+# Local configuration
+# =========================
+appsettings.Development.json
+appsettings.Local.json
