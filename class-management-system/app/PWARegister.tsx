@@ -8,7 +8,7 @@ export default function PWARegister() {
       navigator.serviceWorker
         .register("/sw.js")
         .then(() => {
-          console.log("ZRIOLabs ClassHub service worker registered.");
+          console.log("ZrioLabs ClassHub service worker registered.");
         })
         .catch((error) => {
           console.error("Service worker registration failed:", error);

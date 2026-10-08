@@ -15,11 +15,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "ZRIOLabs Class Management System",
-    template: "%s | ZRIOLabs Class Management System",
+    default: "ZrioLabs Class Management System",
+    template: "%s | ZrioLabs Class Management System",
   },
-  description: "Class management platform powered by ZRIOLabs.",
-  applicationName: "ZRIOLabs Class Management System",
+  description: "Class management platform powered by ZrioLabs.",
+  applicationName: "ZrioLabs Class Management System",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [

@@ -17,7 +17,6 @@ const navigation = [
   { name: "Attendance", href: "/dashboard/attendance", icon: "calendar" },
   { name: "Payments", href: "/dashboard/payments", icon: "wallet" },
   { name: "Reports", href: "/dashboard/reports", icon: "chart" },
-  { name: "Settings", href: "/dashboard/settings", icon: "settings" },
 ];
 
 function NavIcon({
@@ -65,10 +64,16 @@ function NavIcon({
       </>
     ),
 
-    settings: (
+   settings: (
   <>
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.42 1.42-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20h-2v-.48a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-1.42-1.42.06-.06A1.7 1.7 0 0 0 9.4 15a1.7 1.7 0 0 0-1.56-1.03H7v-2h.84A1.7 1.7 0 0 0 9.4 10a1.7 1.7 0 0 0-.34-1.88L9 8.06l1.42-1.42.06.06A1.7 1.7 0 0 0 12.36 7.04 1.7 1.7 0 0 0 13.39 5.48V5h2v.48A1.7 1.7 0 0 0 16.42 7.04a1.7 1.7 0 0 0 1.88-.34l.06-.06 1.42 1.42-.06.06A1.7 1.7 0 0 0 19.4 10a1.7 1.7 0 0 0 1.56 1.03H21v2h-.04A1.7 1.7 0 0 0 19.4 15z" />
+    <path
+      d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
+      fill="none"
+    />
+    <path
+      d="M19.43 12.98a7.7 7.7 0 0 0 0-1.96l2.02-1.58-2-3.46-2.38.96a7.7 7.7 0 0 0-1.7-.98L15 3.5h-4l-.37 2.46c-.6.25-1.17.58-1.7.98l-2.38-.96-2 3.46 2.02 1.58a7.7 7.7 0 0 0 0 1.96l-2.02 1.58 2 3.46 2.38-.96c.53.4 1.1.73 1.7.98L11 20.5h2l.37-2.46a7.7 7.7 0 0 0 1.7-.98l2.38.96 2-3.46-2.02-1.58Z"
+      fill="none"
+    />
   </>
 ),
     scan: (
@@ -171,25 +176,30 @@ export default function DashboardLayout({
   return (
     <div className="flex h-dvh overflow-hidden bg-slate-50">
       {/* Desktop sidebar */}
-      <aside className="hidden h-full w-64 shrink-0 flex-col bg-slate-900 p-5 text-white md:flex">
-        <div className="mb-9 border-b border-slate-700 pb-6">
-          <p className="text-xs font-bold uppercase tracking-widest text-blue-400">
-            ZRIOLabs
-          </p>
-          <h2 className="mt-3 text-xl font-bold leading-snug">
+      <aside className="hidden h-full w-64 shrink-0 flex-col overflow-hidden bg-slate-900 p-4 text-white md:flex">
+        <div className="mb-5 border-b border-slate-700 pb-4">
+          <a
+  href="https://zrio-labs-website.vercel.app/contactme"
+  target="_blank"
+  rel="noopener noreferrer"
+  className="text-xs font-bold uppercase tracking-widest text-blue-400 transition-colors hover:text-blue-300"
+>
+  ZrioLabs
+</a>
+          <h2 className="mt-2 text-lg font-bold leading-snug">
             Class Management
           </h2>
           <p className="mt-1 text-xs text-slate-400">
-            Management System
+           System
           </p>
         </div>
 
-        <nav className="flex-1 space-y-1">
+        <nav className="flex-1 space-y-0.5">
           {navigation.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 rounded-xl px-4 py-3 font-medium transition-colors ${
+              className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive(item.href)
                   ? "bg-blue-600 text-white"
                   : "text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -202,7 +212,7 @@ export default function DashboardLayout({
 
           <Link
             href="/dashboard/attendance/qr"
-            className={`mt-5 flex items-center gap-3 rounded-xl border border-blue-500/40 px-4 py-3 font-semibold transition-colors ${
+           className={`mt-3 flex items-center gap-2.5 rounded-lg border border-blue-500/40 px-3 py-2.5 text-sm font-semibold transition-colors ${
               isActive("/dashboard/attendance/qr")
                 ? "bg-blue-600 text-white"
                 : "bg-blue-600/15 text-blue-300 hover:bg-blue-600/25"
@@ -216,7 +226,7 @@ export default function DashboardLayout({
             {user?.role === "Admin" && (
   <Link
     href="/dashboard/backup"
-    className={`flex items-center gap-3 rounded-xl px-4 py-3 font-medium transition-colors ${
+    className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
       isActive("/dashboard/backup")
         ? "bg-blue-600 text-white"
         : "text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -227,10 +237,10 @@ export default function DashboardLayout({
   </Link>
 )}
 
-{user?.role === "Admin" && (
+{/* {user?.role === "Admin" && (
   <Link
     href="/dashboard/users"
-    className={`flex items-center gap-3 rounded-xl px-4 py-3 font-medium transition-colors ${
+    className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
       isActive("/dashboard/users")
         ? "bg-blue-600 text-white"
         : "text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -239,7 +249,21 @@ export default function DashboardLayout({
     <NavIcon name="users" />
     User Management
   </Link>
-)}
+)} */}
+
+<div className="mt-5 border-t border-slate-700 pt-4 text-center">
+  <p className="text-[11px] text-slate-500">
+    Powered by{" "}
+    <a
+      href="https://zrio-labs-website.vercel.app/contactme"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="font-semibold text-blue-400 transition-colors hover:text-blue-300"
+    >
+      ZRIOLabs
+    </a>
+  </p>
+</div>
 
         <button
           type="button"
@@ -253,15 +277,50 @@ export default function DashboardLayout({
 
       {/* Main content */}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6 md:justify-end md:px-8 md:py-4">
+       <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6 md:px-8 md:py-3">
           <div className="md:hidden">
-            <p className="text-xs font-bold tracking-widest text-blue-600">
-              ZRIOLabs
-            </p>
+            <a
+  href="https://zrio-labs-website.vercel.app/contactme"
+  target="_blank"
+  rel="noopener noreferrer"
+  className="text-xs font-bold tracking-widest text-blue-600 transition-colors hover:text-blue-500"
+>
+  ZrioLabs
+</a>
             <p className="text-sm font-bold text-slate-900">
               Class Management
             </p>
           </div>
+
+          <div className="hidden items-center gap-2 md:flex">
+
+  <Link
+    href="/dashboard/settings"
+    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+  pathname.startsWith("/dashboard/settings")
+    ? "bg-blue-50 text-blue-600"
+    : "text-blue-500 hover:bg-blue-50 hover:text-blue-700"
+}`}
+  >
+    <NavIcon name="settings" className="h-4 w-4" />
+    Settings
+  </Link>
+
+  {user?.role === "Admin" && (
+    <Link
+      href="/dashboard/users"
+      className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+  pathname.startsWith("/dashboard/users")
+    ? "bg-blue-50 text-blue-600"
+    : "text-blue-500 hover:bg-blue-50 hover:text-blue-700"
+}`}
+    >
+      <NavIcon name="users" className="h-4 w-4" />
+      User Management
+    </Link>
+  )}
+
+</div>
 
           {user && (
             <div className="text-right">
@@ -332,7 +391,7 @@ export default function DashboardLayout({
               <div className="mb-5 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold tracking-widest text-blue-600">
-                    ZRIOLabs
+                    ZrioLabs
                   </p>
                   <h2 className="text-xl font-bold text-slate-900">
                     Navigation
@@ -348,24 +407,29 @@ export default function DashboardLayout({
                   ×
                 </button>
               </div>
+              
+<nav className="grid grid-cols-2 gap-2">
+  {[
+    ...navigation,
+    { name: "Settings", href: "/dashboard/settings", icon: "settings" },
+  ].map((item) => (
+    <Link
+      key={item.href}
+      href={item.href}
+      onClick={() => setMobileMenuOpen(false)}
+      className={`flex items-center gap-2 rounded-xl p-4 text-sm font-semibold ${
+        isActive(item.href)
+          ? "bg-blue-600 text-white"
+          : "bg-slate-100 text-slate-800"
+      }`}
+    >
+      <NavIcon name={item.icon} />
+      {item.name}
+    </Link>
+  ))}
+</nav>
+`
 
-              <nav className="grid grid-cols-2 gap-2">
-                {navigation.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center gap-2 rounded-xl p-4 text-sm font-semibold ${
-                      isActive(item.href)
-                        ? "bg-blue-600 text-white"
-                        : "bg-slate-100 text-slate-800"
-                    }`}
-                  >
-                    <NavIcon name={item.icon} />
-                    {item.name}
-                  </Link>
-                ))}
-              </nav>
 
               {user?.role === "Admin" && (
   <Link
@@ -386,7 +450,7 @@ export default function DashboardLayout({
   <Link
     href="/dashboard/users"
     onClick={() => setMobileMenuOpen(false)}
-    className={`flex items-center gap-2 rounded-xl p-4 text-sm font-semibold ${
+    className={`flex items-center gap-2 rounded-xl p-4 text-sm mt-2 font-semibold ${
       isActive("/dashboard/users")
         ? "bg-blue-600 text-white"
         : "bg-slate-100 text-slate-800"
@@ -396,6 +460,20 @@ export default function DashboardLayout({
     User Management
   </Link>
 )}
+
+<div className="mt-5 border-t border-slate-700 pt-4 text-center">
+  <p className="text-[11px] text-slate-500">
+    Powered by{" "}
+    <a
+      href="https://zrio-labs-website.vercel.app/contactme"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="font-semibold text-blue-400 transition-colors hover:text-blue-300"
+    >
+      ZrioLabs
+    </a>
+  </p>
+</div>
 
               <button
                 type="button"

@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "ZRIOLabs Class Management System",
-    short_name: "ZRIOLabs Class Management",
-    description: "Class management platform powered by ZRIOLabs.",
+    name: "ZrioLabs Class Management System",
+    short_name: "ZrioLabs Class Management",
+    description: "Class management platform powered by ZrioLabs.",
     start_url: "/",
     display: "standalone",
     background_color: "#f8fafc",
