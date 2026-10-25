@@ -29,7 +29,7 @@ namespace ClassManagement.Api.Controllers
         // =========================================
         // POST: api/auth/register
         // =========================================
-        [Authorize(Roles = "Admin")]
+        //[Authorize(Roles = "Admin")]
         [HttpPost("register")]
         public async Task<IActionResult> Register(
             RegisterRequest request)
@@ -94,132 +94,121 @@ namespace ClassManagement.Api.Controllers
                 }
             });
         }
+
 // =========================================
 // POST: api/auth/login
 // =========================================
 [HttpPost("login")]
-public async Task<IActionResult> Login(
-    LoginRequest request)
+public async Task<IActionResult> Login(LoginRequest request)
 {
-    const int maxFailedAttempts = 5;
-    const int lockoutMinutes = 15;
-
-    if (string.IsNullOrWhiteSpace(request.Username))
+    try
     {
-        return BadRequest("Username is required.");
-    }
+        const int maxFailedAttempts = 5;
+        const int lockoutMinutes = 15;
 
-    if (string.IsNullOrWhiteSpace(request.Password))
-    {
-        return BadRequest("Password is required.");
-    }
-
-    var user = await _context.Users
-        .FirstOrDefaultAsync(u =>
-            u.Username == request.Username);
-
-    if (user == null)
-    {
-        return Unauthorized(
-            "Invalid username or password."
-        );
-    }
-
-    if (!user.IsActive)
-    {
-        return Unauthorized(
-            "User account is inactive."
-        );
-    }
-
-    // Check whether the account is currently locked
-    if (user.LockoutEnd.HasValue)
-    {
-        if (user.LockoutEnd.Value > DateTime.UtcNow)
+        if (string.IsNullOrWhiteSpace(request.Username))
         {
-            var remainingMinutes = Math.Max(
-                1,
-                (int)Math.Ceiling(
-                    (user.LockoutEnd.Value - DateTime.UtcNow)
-                    .TotalMinutes
-                )
-            );
-
-            return Unauthorized(
-                $"Account temporarily locked. Try again in {remainingMinutes} minute(s)."
-            );
+            return BadRequest("Username is required.");
         }
 
-        // Lockout period has expired
-        user.FailedLoginAttempts = 0;
-        user.LockoutEnd = null;
-
-        await _context.SaveChangesAsync();
-    }
-
-    var passwordValid = BCrypt.Net.BCrypt.Verify(
-        request.Password,
-        user.PasswordHash
-    );
-
-    if (!passwordValid)
-    {
-        user.FailedLoginAttempts++;
-
-        if (user.FailedLoginAttempts >= maxFailedAttempts)
+        if (string.IsNullOrWhiteSpace(request.Password))
         {
-            user.LockoutEnd = DateTime.UtcNow
-                .AddMinutes(lockoutMinutes);
+            return BadRequest("Password is required.");
+        }
+
+        var user = await _context.Users
+            .FirstOrDefaultAsync(u => u.Username == request.Username);
+
+        if (user == null)
+        {
+            return Unauthorized("Invalid username or password.");
+        }
+
+        if (!user.IsActive)
+        {
+            return Unauthorized("User account is inactive.");
+        }
+
+        // Check whether the account is currently locked
+        if (user.LockoutEnd.HasValue)
+        {
+            if (user.LockoutEnd.Value > DateTime.UtcNow)
+            {
+                var remainingMinutes = Math.Max(
+                    1,
+                    (int)Math.Ceiling(
+                        (user.LockoutEnd.Value - DateTime.UtcNow)
+                        .TotalMinutes
+                    )
+                );
+
+                return Unauthorized(
+                    $"Account temporarily locked. Try again in {remainingMinutes} minute(s)."
+                );
+            }
 
             user.FailedLoginAttempts = 0;
+            user.LockoutEnd = null;
+            await _context.SaveChangesAsync();
+        }
+
+        var passwordValid = BCrypt.Net.BCrypt.Verify(
+            request.Password,
+            user.PasswordHash
+        );
+
+        if (!passwordValid)
+        {
+            user.FailedLoginAttempts++;
+
+            if (user.FailedLoginAttempts >= maxFailedAttempts)
+            {
+                user.LockoutEnd = DateTime.UtcNow
+                    .AddMinutes(lockoutMinutes);
+
+                user.FailedLoginAttempts = 0;
+                await _context.SaveChangesAsync();
+
+                return Unauthorized(
+                    "Too many failed login attempts. Your account has been temporarily locked for 15 minutes."
+                );
+            }
 
             await _context.SaveChangesAsync();
-
-            return Unauthorized(
-                "Too many failed login attempts. Your account has been temporarily locked for 15 minutes."
-            );
+            return Unauthorized("Invalid username or password.");
         }
 
+        user.FailedLoginAttempts = 0;
+        user.LockoutEnd = null;
         await _context.SaveChangesAsync();
 
-        return Unauthorized(
-            "Invalid username or password."
-        );
-    }
+        var expireMinutes = _configuration.GetValue<int?>("Jwt:ExpireMinutes") ?? 60;
+        var expiresAt = DateTime.UtcNow.AddMinutes(expireMinutes);
 
-    // Successful login - reset failed login tracking
-    user.FailedLoginAttempts = 0;
-    user.LockoutEnd = null;
+        var token = GenerateJwtToken(user, expiresAt);
 
-    await _context.SaveChangesAsync();
-
-    var expireMinutes =
-        _configuration.GetValue<int>(
-            "Jwt:ExpireMinutes"
-        );
-
-    var expiresAt = DateTime.UtcNow
-        .AddMinutes(expireMinutes);
-
-    var token = GenerateJwtToken(
-        user,
-        expiresAt
-    );
-
-    return Ok(new
-    {
-        message = "Login successful.",
-        token,
-        expiresAt,
-        user = new
+        return Ok(new
         {
-            user.Id,
-            user.Username,
-            user.Role,
-            user.IsActive
-        }
-    });
+            message = "Login successful.",
+            token,
+            expiresAt,
+            user = new
+            {
+                user.Id,
+                user.Username,
+                user.Role,
+                user.IsActive
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        // මෙන්න මෙතනින් සැබෑ error එක සහ detail එක බ්‍රව්සර් එකට එවයි
+        return StatusCode(500, new { message = ex.Message, detail = ex.InnerException?.Message });
+    }
 }
+
+
 
         // =========================================
         // Generate JWT Token

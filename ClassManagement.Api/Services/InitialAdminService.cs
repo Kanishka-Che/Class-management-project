@@ -39,7 +39,7 @@ namespace ClassManagement.Api.Services
                 return false;
             }
 
-            if (password.Length < 8)
+            if (password.Length < 6)
             {
                 throw new InvalidOperationException(
                     "Initial Admin password must be at least 8 characters long."

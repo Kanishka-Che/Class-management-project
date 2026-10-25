@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import api from "@/lib/api";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<"username" | "password">(
@@ -15,6 +16,9 @@ export default function SettingsPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  // =========================================
+  // Change Username
+  // =========================================
   const handleUsernameChange = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -31,37 +35,13 @@ export default function SettingsPage() {
       return;
     }
 
-    const token = sessionStorage.getItem("token");
-
-    if (!token) {
-      setError("You are not logged in.");
-      return;
-    }
-
     try {
-      const response = await fetch("/api/users/change-username", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          newUsername: newUsername.trim(),
-          currentPassword,
-        }),
+      const response = await api.post("/api/users/change-username", {
+        newUsername: newUsername.trim(),
+        currentPassword,
       });
 
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        setError(
-          typeof data === "string"
-            ? data
-            : data?.message || "Failed to change username."
-        );
-        return;
-      }
-
+      const data = response.data;
       const user = sessionStorage.getItem("user");
 
       if (user) {
@@ -71,7 +51,7 @@ export default function SettingsPage() {
           "user",
           JSON.stringify({
             ...parsedUser,
-            username: data.username,
+            username: data.username || newUsername.trim(),
           })
         );
       }
@@ -79,11 +59,16 @@ export default function SettingsPage() {
       setMessage("Username changed successfully.");
       setNewUsername("");
       setCurrentPassword("");
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message || "Failed to change username. Please check your password."
+      );
     }
   };
 
+  // =========================================
+  // Change Password
+  // =========================================
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -105,43 +90,20 @@ export default function SettingsPage() {
       return;
     }
 
-    const token = sessionStorage.getItem("token");
-
-    if (!token) {
-      setError("You are not logged in.");
-      return;
-    }
-
     try {
-      const response = await fetch("/api/users/change-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-        }),
+      await api.post("/api/users/change-password", {
+        currentPassword,
+        newPassword,
       });
-
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        setError(
-          typeof data === "string"
-            ? data
-            : data?.message || "Failed to change password."
-        );
-        return;
-      }
 
       setMessage("Password changed successfully.");
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message || "Failed to change password. Please check your current password."
+      );
     }
   };
 

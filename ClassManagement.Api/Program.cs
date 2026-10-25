@@ -27,18 +27,17 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddControllers();
 
 // =========================================
-// CORS
+// CORS Policy (Allow Dynamic Origin for Mobile/IPs)
 // =========================================
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
     {
         policy
-            .WithOrigins(
-    "http://localhost:3000"
-)
+            .SetIsOriginAllowed(origin => true) // Phone/Local IP  Request Allow
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 
@@ -100,7 +99,10 @@ builder.Services
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<DatabaseBackupService>();
 builder.Services.AddScoped<InitialAdminService>();
-builder.Services.AddHostedService<DailyBackupService>();
+
+// 👇 මෙතැන Daily Backup එක වෙනුවට Weekly Backup Service එක Register කර ඇත
+builder.Services.AddHostedService<WeeklyBackupService>();
+
 builder.Services.AddHttpClient<ISmsService, SmsService>();
 
 var app = builder.Build();
@@ -119,17 +121,15 @@ using (var scope = app.Services.CreateScope())
     var initialAdminService =
         scope.ServiceProvider.GetRequiredService<InitialAdminService>();
 
-    // Creates the first Admin only when Users table is empty
-    // and InitialAdmin credentials are configured.
-   var initialAdminCreated =
+    var initialAdminCreated =
     await initialAdminService.CreateInitialAdminAsync();
 
-if (initialAdminCreated)
-{
-    Console.WriteLine(
-        "INITIAL_ADMIN_CREATED_SUCCESSFULLY"
-    );
-}
+    if (initialAdminCreated)
+    {
+        Console.WriteLine(
+            "INITIAL_ADMIN_CREATED_SUCCESSFULLY"
+        );
+    }
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
@@ -142,10 +142,8 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
 app.UseCors("FrontendPolicy");
 
-// Authentication MUST come before Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 

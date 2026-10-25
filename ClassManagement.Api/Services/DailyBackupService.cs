@@ -1,15 +1,15 @@
 namespace ClassManagement.Api.Services
 {
-    public class DailyBackupService : BackgroundService
+    public class WeeklyBackupService : BackgroundService
     {
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly IConfiguration _configuration;
-        private readonly ILogger<DailyBackupService> _logger;
+        private readonly ILogger<WeeklyBackupService> _logger;
 
-        public DailyBackupService(
+        public WeeklyBackupService(
             IServiceScopeFactory scopeFactory,
             IConfiguration configuration,
-            ILogger<DailyBackupService> logger)
+            ILogger<WeeklyBackupService> logger)
         {
             _scopeFactory = scopeFactory;
             _configuration = configuration;
@@ -23,36 +23,25 @@ namespace ClassManagement.Api.Services
             {
                 try
                 {
-                    var backupHour =
-                        _configuration.GetValue<int>("Backup:Hour");
-
-                    var backupMinute =
-                        _configuration.GetValue<int>("Backup:Minute");
+                    var backupHour = _configuration.GetValue<int>("Backup:Hour");
+                    var backupMinute = _configuration.GetValue<int>("Backup:Minute");
 
                     if (backupHour < 0 || backupHour > 23)
-{
-    throw new InvalidOperationException(
-        "Backup hour must be between 0 and 23."
-    );
-}
+                    {
+                        throw new InvalidOperationException("Backup hour must be between 0 and 23.");
+                    }
 
-if (backupMinute < 0 || backupMinute > 59)
-{
-    throw new InvalidOperationException(
-        "Backup minute must be between 0 and 59."
-    );
-}
+                    if (backupMinute < 0 || backupMinute > 59)
+                    {
+                        throw new InvalidOperationException("Backup minute must be between 0 and 59.");
+                    }
 
-                    var sriLankaTimeZone =
-                        TimeZoneInfo.FindSystemTimeZoneById(
-                            "Sri Lanka Standard Time"
-                        );
+                    var sriLankaTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Sri Lanka Standard Time");
 
-                    var now =
-                        TimeZoneInfo.ConvertTimeFromUtc(
-                            DateTime.UtcNow,
-                            sriLankaTimeZone
-                        );
+                    var now = TimeZoneInfo.ConvertTimeFromUtc(
+                        DateTime.UtcNow,
+                        sriLankaTimeZone
+                    );
 
                     var nextBackup = new DateTime(
                         now.Year,
@@ -63,16 +52,19 @@ if (backupMinute < 0 || backupMinute > 59)
                         0
                     );
 
-                    // Today's backup time has already passed
-                    if (nextBackup <= now)
+                    // -------------------------------------------------------------
+                    // 📅 Weekly Schedule Logic                     					   	 	// -------------------------------------------------------------
+                    
+                    while (nextBackup.DayOfWeek != DayOfWeek.Sunday || nextBackup <= now)
                     {
                         nextBackup = nextBackup.AddDays(1);
                     }
+                    // -------------------------------------------------------------
 
                     var delay = nextBackup - now;
 
                     _logger.LogInformation(
-                        "Next automatic database backup scheduled for {BackupTime}.",
+                        "Next automatic weekly database backup scheduled for {BackupTime}.",
                         nextBackup
                     );
 
@@ -81,17 +73,15 @@ if (backupMinute < 0 || backupMinute > 59)
                         stoppingToken
                     );
 
-                    using var scope =
-                        _scopeFactory.CreateScope();
+                    using var scope = _scopeFactory.CreateScope();
 
-                    var backupService =
-                        scope.ServiceProvider
-                            .GetRequiredService<DatabaseBackupService>();
+                    var backupService = scope.ServiceProvider
+                        .GetRequiredService<DatabaseBackupService>();
 
                     await backupService.CreateBackupAsync();
 
                     _logger.LogInformation(
-                        "Automatic daily database backup completed."
+                        "Automatic weekly database backup completed."
                     );
                 }
                 catch (OperationCanceledException)
