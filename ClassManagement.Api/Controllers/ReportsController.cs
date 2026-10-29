@@ -65,7 +65,8 @@ namespace ClassManagement.Api.Controllers
         [HttpGet("attendance/monthly")]
         public async Task<IActionResult> GetMonthlyAttendanceReport(
             [FromQuery] int year,
-            [FromQuery] int month)
+            [FromQuery] int month,
+            [FromQuery] int? classId)
         {
             if (month < 1 || month > 12)
             {
@@ -82,10 +83,24 @@ namespace ClassManagement.Api.Controllers
             var startDate = new DateOnly(year, month, 1);
             var endDate = startDate.AddMonths(1);
 
-            var attendances = await _context.Attendances
+            if (classId.HasValue &&
+                !await _context.Classes.AnyAsync(c => c.Id == classId.Value))
+            {
+                return NotFound("Class not found.");
+            }
+
+            var attendanceQuery = _context.Attendances
                 .Where(a =>
                     a.AttendanceDate >= startDate &&
-                    a.AttendanceDate < endDate)
+                    a.AttendanceDate < endDate);
+
+            if (classId.HasValue)
+            {
+                attendanceQuery = attendanceQuery
+                    .Where(a => a.ClassId == classId.Value);
+            }
+
+            var attendances = await attendanceQuery
                 .OrderBy(a => a.AttendanceDate)
                 .ThenBy(a => a.Class!.Name)
                 .ThenBy(a => a.Student!.StudentCode)
@@ -107,12 +122,51 @@ namespace ClassManagement.Api.Controllers
                 })
                 .ToListAsync();
 
+            var enrolledStudentsQuery = _context.Enrollments
+                .Where(e =>
+                    e.AcademicYear == year &&
+                    (e.JoinedDate.Year < year ||
+                     (e.JoinedDate.Year == year &&
+                      e.JoinedDate.Month <= month)) &&
+                    e.IsActive &&
+                    e.Student != null &&
+                    e.Student.IsActive);
+
+            if (classId.HasValue)
+            {
+                enrolledStudentsQuery = enrolledStudentsQuery
+                    .Where(e => e.ClassId == classId.Value);
+            }
+
+            var totalStudents = await enrolledStudentsQuery
+                .Select(e => e.StudentId)
+                .Distinct()
+                .CountAsync();
+
+            var attendanceDays = attendances
+                .GroupBy(a => new { a.StudentId, a.ClassId })
+                .ToDictionary(
+                    group => (group.Key.StudentId, group.Key.ClassId),
+                    group => group.Select(a => a.AttendanceDate).Distinct().Count());
+
             return Ok(new
             {
                 year,
                 month,
+                totalStudents,
                 totalAttendance = attendances.Count,
-                attendances
+                attendances = attendances.Select(a => new
+                {
+                    a.Id,
+                    a.StudentId,
+                    a.StudentCode,
+                    a.StudentName,
+                    a.ClassId,
+                    a.ClassName,
+                    a.AttendanceDate,
+                    a.CheckInTime,
+                    daysAttended = attendanceDays[(a.StudentId, a.ClassId)]
+                })
             });
         }
 
@@ -125,7 +179,8 @@ namespace ClassManagement.Api.Controllers
 [HttpGet("payments/monthly")]
 public async Task<IActionResult> GetMonthlyPaymentReport(
     [FromQuery] int year,
-    [FromQuery] int month)
+    [FromQuery] int month,
+    [FromQuery] int? classId)
 {
     if (month < 1 || month > 12)
     {
@@ -139,10 +194,24 @@ public async Task<IActionResult> GetMonthlyPaymentReport(
         return BadRequest("Invalid year.");
     }
 
-    var payments = await _context.Payments
+    if (classId.HasValue &&
+        !await _context.Classes.AnyAsync(c => c.Id == classId.Value))
+    {
+        return NotFound("Class not found.");
+    }
+
+    var paymentsQuery = _context.Payments
         .Where(p =>
             p.Year == year &&
-            p.Month == month)
+            p.Month == month);
+
+    if (classId.HasValue)
+    {
+        paymentsQuery = paymentsQuery
+            .Where(p => p.ClassId == classId.Value);
+    }
+
+    var payments = await paymentsQuery
         .OrderBy(p => p.Class!.Name)
         .ThenBy(p => p.Student!.StudentCode)
         .Select(p => new PaymentResponse
@@ -165,12 +234,34 @@ public async Task<IActionResult> GetMonthlyPaymentReport(
         })
         .ToListAsync();
 
+    var enrolledStudentsQuery = _context.Enrollments
+        .Where(e =>
+            e.AcademicYear == year &&
+            (e.JoinedDate.Year < year ||
+             (e.JoinedDate.Year == year &&
+              e.JoinedDate.Month <= month)) &&
+            e.IsActive &&
+            e.Student != null &&
+            e.Student.IsActive);
+
+    if (classId.HasValue)
+    {
+        enrolledStudentsQuery = enrolledStudentsQuery
+            .Where(e => e.ClassId == classId.Value);
+    }
+
+    var totalStudents = await enrolledStudentsQuery
+        .Select(e => e.StudentId)
+        .Distinct()
+        .CountAsync();
+
     var totalCollected = payments.Sum(p => p.Amount);
 
     return Ok(new
     {
         year,
         month,
+        totalStudents,
         totalPayments = payments.Count,
         totalCollected,
         payments
@@ -268,11 +359,17 @@ public async Task<IActionResult> GetStudentReport(int studentId)
 [HttpGet("class/{classId}/year/{year}")]
 public async Task<IActionResult> GetClassSummaryReport(
     int classId,
-    int year)
+    int year,
+    [FromQuery] int month)
 {
     if (year < 2000 || year > 2100)
     {
         return BadRequest("Invalid year.");
+    }
+
+    if (month < 1 || month > 12)
+    {
+        return BadRequest("Month must be between 1 and 12.");
     }
 
     var classItem = await _context.Classes
@@ -283,10 +380,16 @@ public async Task<IActionResult> GetClassSummaryReport(
         return NotFound("Class not found.");
     }
 
+    var monthStart = new DateOnly(year, month, 1);
+    var monthEnd = monthStart.AddMonths(1);
+
     var totalStudents = await _context.Enrollments
         .CountAsync(e =>
             e.ClassId == classId &&
             e.AcademicYear == year &&
+            (e.JoinedDate.Year < year ||
+             (e.JoinedDate.Year == year &&
+              e.JoinedDate.Month <= month)) &&
             e.IsActive &&
             e.Student != null &&
             e.Student.IsActive);
@@ -294,12 +397,14 @@ public async Task<IActionResult> GetClassSummaryReport(
     var totalAttendance = await _context.Attendances
         .CountAsync(a =>
             a.ClassId == classId &&
-            a.AttendanceDate.Year == year);
+            a.AttendanceDate >= monthStart &&
+            a.AttendanceDate < monthEnd);
 
     var payments = await _context.Payments
         .Where(p =>
             p.ClassId == classId &&
-            p.Year == year)
+            p.Year == year &&
+            p.Month == month)
         .ToListAsync();
 
     var totalPayments = payments.Count;
@@ -313,6 +418,7 @@ public async Task<IActionResult> GetClassSummaryReport(
         teacherName = classItem.TeacherName,
         monthlyFee = classItem.MonthlyFee,
         year,
+        month,
 
         totalStudents,
         totalAttendance,

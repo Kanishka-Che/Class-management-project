@@ -76,8 +76,12 @@ public async Task<IActionResult> CreateEnrollment(
         StudentId = request.StudentId,
         ClassId = request.ClassId,
         AcademicYear = request.AcademicYear,
-        JoinedDate = DateTime.UtcNow,
-        IsActive = true
+        JoinedDate = request.JoinedDate.HasValue
+    ? DateTime.SpecifyKind(
+        request.JoinedDate.Value.ToDateTime(TimeOnly.MinValue),
+        DateTimeKind.Utc)
+    : DateTime.UtcNow,
+IsActive = true
     };
 
     _context.Enrollments.Add(enrollment);
@@ -236,7 +240,14 @@ public async Task<IActionResult> UpdateStudentEnrollment(
 
     enrollment.ClassId = request.ClassId;
 
-    await _context.SaveChangesAsync();
+if (request.JoinedDate.HasValue)
+{
+    enrollment.JoinedDate = DateTime.SpecifyKind(
+        request.JoinedDate.Value.ToDateTime(TimeOnly.MinValue),
+        DateTimeKind.Utc);
+}
+
+await _context.SaveChangesAsync();
 
     return Ok(new EnrollmentResponse
     {

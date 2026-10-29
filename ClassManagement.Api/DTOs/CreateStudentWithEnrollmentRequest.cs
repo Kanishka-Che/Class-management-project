@@ -21,6 +21,8 @@ namespace ClassManagement.Api.DTOs
 
         public string? School { get; set; }
 
+        public DateOnly? JoinedDate { get; set; }
+
         // Enrollment Information
         public int ClassId { get; set; }
 

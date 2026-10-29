@@ -24,10 +24,6 @@ namespace ClassManagement.Api.Controllers
         // POST: api/attendance
         // Mark attendance manually
         // =========================================
-// =========================================
-// POST: api/attendance
-// Mark attendance manually
-// =========================================
 [HttpPost]
 public async Task<IActionResult> MarkAttendance(
     CreateAttendanceRequest request)
@@ -162,10 +158,12 @@ public async Task<IActionResult> MarkAttendanceByQr(
 
     // Student must be enrolled in this class
     var enrollment = await _context.Enrollments
-        .FirstOrDefaultAsync(e =>
+        .Where(e =>
             e.StudentId == student.Id &&
             e.ClassId == request.ClassId &&
-            e.IsActive);
+            e.IsActive)
+        .OrderByDescending(e => e.AcademicYear)
+        .FirstOrDefaultAsync();
 
     if (enrollment == null)
     {
@@ -184,35 +182,63 @@ public async Task<IActionResult> MarkAttendanceByQr(
             a.ClassId == request.ClassId &&
             a.AttendanceDate == today);
 
-    if (existingAttendance != null)
-    {
-        return BadRequest(
-            "Attendance already marked for today."
-        );
-    }
-
-    // Check current month's payment
-    var payment = await _context.Payments
-        .FirstOrDefaultAsync(p =>
+    var currentFeeMonth = new DateOnly(sriLankaNow.Year, sriLankaNow.Month, 1);
+    var joinedFeeMonth = new DateOnly(
+        enrollment.JoinedDate.Year,
+        enrollment.JoinedDate.Month,
+        1);
+    var paymentsSinceJoining = await _context.Payments
+        .Where(p =>
             p.StudentId == student.Id &&
             p.ClassId == request.ClassId &&
-            p.Year == sriLankaNow.Year &&
-            p.Month == sriLankaNow.Month);
+            p.Year >= joinedFeeMonth.Year &&
+            p.Year <= currentFeeMonth.Year)
+        .ToListAsync();
 
-    var attendance = new Attendance
+    var feeMonth = joinedFeeMonth;
+    while (feeMonth < currentFeeMonth &&
+           paymentsSinceJoining.Any(p =>
+               p.Year == feeMonth.Year && p.Month == feeMonth.Month))
     {
-        StudentId = student.Id,
-        ClassId = request.ClassId,
-        AttendanceDate = today,
-        CheckInTime = DateTime.UtcNow
-    };
+        feeMonth = feeMonth.AddMonths(1);
+    }
 
-    _context.Attendances.Add(attendance);
-    await _context.SaveChangesAsync();
+    if (feeMonth > currentFeeMonth)
+    {
+        feeMonth = currentFeeMonth;
+    }
+
+    var payment = paymentsSinceJoining.FirstOrDefault(p =>
+        p.Year == feeMonth.Year && p.Month == feeMonth.Month);
+
+    var attendance = existingAttendance;
+    if (attendance == null)
+    {
+        attendance = new Attendance
+        {
+            StudentId = student.Id,
+            ClassId = request.ClassId,
+            AttendanceDate = today,
+            CheckInTime = DateTime.UtcNow
+        };
+
+        _context.Attendances.Add(attendance);
+        await _context.SaveChangesAsync();
+    }
+
+    var monthStart = new DateOnly(sriLankaNow.Year, sriLankaNow.Month, 1);
+    var daysAttendedThisMonth = await _context.Attendances
+        .CountAsync(a =>
+            a.StudentId == student.Id &&
+            a.ClassId == request.ClassId &&
+            a.AttendanceDate >= monthStart &&
+            a.AttendanceDate <= today);
 
     return Ok(new
     {
-        message = "Attendance marked successfully.",
+        message = existingAttendance == null
+            ? "Attendance marked successfully."
+            : "Attendance was already marked for today.",
 
         attendance = new AttendanceResponse
         {
@@ -255,8 +281,8 @@ public async Task<IActionResult> MarkAttendanceByQr(
 
         payment = new
         {
-            Year = sriLankaNow.Year,
-            Month = sriLankaNow.Month,
+            Year = feeMonth.Year,
+            Month = feeMonth.Month,
 
             IsPaid = payment != null,
 
@@ -265,7 +291,13 @@ public async Task<IActionResult> MarkAttendanceByQr(
             MonthlyFee = classItem.MonthlyFee,
 
             PaidAt = payment?.PaidAt
-        }
+        },
+
+        attendanceSummary = new
+            {
+                joinedDate = enrollment.JoinedDate.ToString("yyyy-MM-dd"),
+                daysAttendedThisMonth = daysAttendedThisMonth
+            }
     });
 }
 

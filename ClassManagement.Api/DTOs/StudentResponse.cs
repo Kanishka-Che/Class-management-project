@@ -17,5 +17,6 @@ namespace ClassManagement.Api.DTOs
         public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+        public DateOnly? JoinedDate { get; set; }
     }
 }

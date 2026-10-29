@@ -36,5 +36,7 @@ namespace ClassManagement.Api.DTOs
 
         [StringLength(200)]
         public string? School { get; set; }
+
+        public DateOnly? JoinedDate { get; set; }
     }
 }

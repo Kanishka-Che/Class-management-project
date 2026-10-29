@@ -17,6 +17,17 @@ namespace ClassManagement.Api.Controllers
             _backupService = backupService;
         }
 
+        [HttpGet("report")]
+        public IActionResult GetBackupReport()
+        {
+            return Ok(new
+            {
+                generatedAtUtc = DateTime.UtcNow,
+                retentionDays = 90,
+                backups = _backupService.GetBackupReport()
+            });
+        }
+
         // =========================================
         // POST: api/backup
         // Create database backup manually

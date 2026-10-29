@@ -2,8 +2,17 @@ using System.Diagnostics;
 
 namespace ClassManagement.Api.Services
 {
+    public sealed record BackupReportEntry(
+        string FileName,
+        DateTime CreatedAtUtc,
+        long SizeBytes,
+        string Status,
+        int RetentionDaysRemaining);
+
     public class DatabaseBackupService
     {
+        private const int BackupRetentionDays = 90;
+
         private readonly IConfiguration _configuration;
         private readonly IWebHostEnvironment _environment;
         private readonly ILogger<DatabaseBackupService> _logger;
@@ -20,10 +29,7 @@ namespace ClassManagement.Api.Services
 
         public async Task<string> CreateBackupAsync()
         {
-            var backupFolder = Path.Combine(
-                _environment.ContentRootPath,
-                "Backups"
-            );
+            var backupFolder = GetBackupFolder();
 
             Directory.CreateDirectory(backupFolder);
 
@@ -135,7 +141,7 @@ var startInfo = new ProcessStartInfo
     backupPath
 );
 
-// Delete backup files older than 30 days
+// Delete backup files older than the retention period
 var oldBackupFiles = Directory.GetFiles(
     backupFolder,
     "*.backup"
@@ -145,7 +151,7 @@ foreach (var file in oldBackupFiles)
 {
     var fileInfo = new FileInfo(file);
 
-    if (fileInfo.CreationTime < DateTime.Now.AddDays(-30))
+    if (fileInfo.CreationTimeUtc < DateTime.UtcNow.AddDays(-BackupRetentionDays))
     {
         fileInfo.Delete();
 
@@ -157,6 +163,39 @@ foreach (var file in oldBackupFiles)
 }
 
 return backupPath;
+        }
+
+        public IReadOnlyList<BackupReportEntry> GetBackupReport()
+        {
+            var backupFolder = GetBackupFolder();
+            if (!Directory.Exists(backupFolder))
+            {
+                return Array.Empty<BackupReportEntry>();
+            }
+
+            var now = DateTime.UtcNow;
+            return Directory.GetFiles(backupFolder, "*.backup")
+                .Select(path => new FileInfo(path))
+                .OrderByDescending(file => file.CreationTimeUtc)
+                .Select(file =>
+                {
+                    var remainingDays = (int)Math.Ceiling(
+                        (file.CreationTimeUtc.AddDays(BackupRetentionDays) - now)
+                        .TotalDays);
+
+                    return new BackupReportEntry(
+                        file.Name,
+                        file.CreationTimeUtc,
+                        file.Length,
+                        remainingDays > 0 ? "Available" : "Expired - pending cleanup",
+                        Math.Max(remainingDays, 0));
+                })
+                .ToList();
+        }
+
+        private string GetBackupFolder()
+        {
+            return Path.Combine(_environment.ContentRootPath, "Backups");
         }
     }
 }

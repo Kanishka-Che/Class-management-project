@@ -24,5 +24,8 @@ namespace ClassManagement.Api.DTOs
             ErrorMessage = "Academic year must be between 2000 and 2100."
         )]
         public int AcademicYear { get; set; }
+
+
+        public DateOnly? JoinedDate { get; set; }
     }
 }

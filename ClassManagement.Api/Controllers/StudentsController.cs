@@ -112,7 +112,12 @@ namespace ClassManagement.Api.Controllers
                     QrToken = s.QrToken,
                     IsActive = s.IsActive,
                     CreatedAt = s.CreatedAt,
-                    UpdatedAt = s.UpdatedAt
+                    UpdatedAt = s.UpdatedAt,
+                    JoinedDate = _context.Enrollments
+                        .Where(e => e.StudentId == s.Id)
+                        .OrderByDescending(e => e.AcademicYear)
+                        .Select(e => (DateOnly?)DateOnly.FromDateTime(e.JoinedDate))
+                        .FirstOrDefault()
                 })
                 .FirstOrDefaultAsync();
 
@@ -368,8 +373,12 @@ public async Task<IActionResult> CreateStudentWithEnrollment(
             StudentId = student.Id,
             ClassId = request.ClassId,
             AcademicYear = request.AcademicYear,
-            JoinedDate = DateTime.UtcNow,
-            IsActive = true
+            JoinedDate = request.JoinedDate.HasValue
+                ? DateTime.SpecifyKind(
+                    request.JoinedDate.Value.ToDateTime(TimeOnly.MinValue),
+                    DateTimeKind.Utc
+                  )
+                : DateTime.UtcNow,
         };
 
         _context.Enrollments.Add(enrollment);
@@ -413,9 +422,9 @@ public async Task<IActionResult> CreateStudentWithEnrollment(
     }
 }
 
-        // =========================================
+       // =========================================
         // PUT: api/students/{id}
-        // Update student personal information
+        // Update student personal information and enrollment joined date
         // =========================================
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateStudent(
@@ -453,8 +462,22 @@ public async Task<IActionResult> CreateStudentWithEnrollment(
             student.ParentPhone = request.ParentPhone;
             student.Address = request.Address;
             student.School = request.School;
-
             student.UpdatedAt = DateTime.UtcNow;
+
+            if (request.JoinedDate.HasValue)
+            {
+                var enrollments = await _context.Enrollments
+                    .Where(e => e.StudentId == id)
+                    .ToListAsync();
+
+                foreach (var enrollment in enrollments)
+                {
+                    enrollment.JoinedDate = DateTime.SpecifyKind(
+                        request.JoinedDate.Value.ToDateTime(TimeOnly.MinValue),
+                        DateTimeKind.Utc
+                    );
+                }
+            }
 
             await _context.SaveChangesAsync();
 
@@ -572,6 +595,40 @@ public async Task<IActionResult> PermanentlyDeleteStudent(int id)
     }
 }
 
+
+// =========================================
+        // PUT: api/enrollments/student/{studentId}/year/{year}
+        // Update enrollment class or joined date
+        // =========================================
+//        [HttpPut("student/{studentId}/year/{year}")]
+// public async Task<IActionResult> UpdateEnrollment(
+//     int studentId, int year, UpdateEnrollmentRequest request)
+// {
+//     var enrollment = await _context.Enrollments
+//         .FirstOrDefaultAsync(e => e.StudentId == studentId && e.AcademicYear == year);
+
+//     if (enrollment == null)
+//         return NotFound("Enrollment not found for this academic year.");
+
+//     if (request.ClassId > 0)
+//     {
+//         var classItem = await _context.Classes.FindAsync(request.ClassId);
+//         if (classItem == null || !classItem.IsActive)
+//             return BadRequest("Invalid or inactive class.");
+
+//         enrollment.ClassId = request.ClassId;
+//     }
+
+//     if (request.JoinedDate.HasValue)
+//     {
+//         enrollment.JoinedDate = DateTime.SpecifyKind(
+//             request.JoinedDate.Value.ToDateTime(TimeOnly.MinValue),
+//             DateTimeKind.Utc);
+//     }
+
+//     await _context.SaveChangesAsync();
+//     return Ok(new { message = "Enrollment updated successfully." });
+// }
 
 
         // =========================================
