@@ -18,6 +18,8 @@ type Student = {
   school: string | null;
   qrToken: string | null;
   isActive: boolean;
+  JoinedDate: string | null;
+  joinedDate: string | null;
 };
 
 type ClassItem = {
@@ -75,13 +77,10 @@ export default function StudentDetailsPage() {
 
   const [student, setStudent] = useState<Student | null>(null);
   const [classes, setClasses] = useState<ClassItem[]>([]);
-  const [enrollment, setEnrollment] =
-    useState<Enrollment | null>(null);
+  const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
 
   const [selectedClassId, setSelectedClassId] = useState("");
-  const [academicYear, setAcademicYear] = useState(
-    currentYear.toString()
-  );
+  const [academicYear, setAcademicYear] = useState(currentYear.toString());
 
   const [qrImage, setQrImage] = useState("");
   const [qrLoading, setQrLoading] = useState(false);
@@ -100,34 +99,27 @@ export default function StudentDetailsPage() {
   // =========================================
   // Load Enrollment
   // =========================================
-const [attendanceHistory, setAttendanceHistory] = useState<
-  AttendanceRecord[]
->([]);
+  const [attendanceHistory, setAttendanceHistory] = useState<
+    AttendanceRecord[]
+  >([]);
 
-const [attendanceLoading, setAttendanceLoading] =
-  useState(false);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
 
-const [attendanceError, setAttendanceError] =
-  useState("");
+  const [attendanceError, setAttendanceError] = useState("");
 
+  const [paymentHistory, setPaymentHistory] = useState<PaymentRecord[]>([]);
 
-  const [paymentHistory, setPaymentHistory] = useState<
-  PaymentRecord[]
->([]);
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
-const [paymentLoading, setPaymentLoading] =
-  useState(false);
-
-const [paymentError, setPaymentError] =
-  useState("");
+  const [paymentError, setPaymentError] = useState("");
 
   const loadEnrollment = async (
     studentId: string | number,
-    year: string | number
+    year: string | number,
   ) => {
     try {
       const response = await api.get(
-        `/api/enrollments/student/${studentId}/year/${year}`
+        `/api/enrollments/student/${studentId}/year/${year}`,
       );
 
       setEnrollment(response.data);
@@ -143,16 +135,12 @@ const [paymentError, setPaymentError] =
   // =========================================
   // Load QR Code
   // =========================================
-  const loadQrCode = async (
-    studentId: string | number
-  ) => {
+  const loadQrCode = async (studentId: string | number) => {
     try {
       setQrLoading(true);
       setQrError("");
 
-      const response = await api.get(
-        `/api/qr/student/${studentId}`
-      );
+      const response = await api.get(`/api/qr/student/${studentId}`);
 
       const data = response.data;
 
@@ -160,13 +148,13 @@ const [paymentError, setPaymentError] =
       // "data:image/png;base64,..."
       // or { qrCode: "data:image/png;base64,..." }
       // or { qrImage: "data:image/png;base64,..." }
-     if (typeof data === "string") {
-  setQrImage(data);
-} else if (data?.qrImageBase64) {
-  setQrImage(data.qrImageBase64);
-} else {
-  setQrError("QR code could not be loaded.");
-}
+      if (typeof data === "string") {
+        setQrImage(data);
+      } else if (data?.qrImageBase64) {
+        setQrImage(data.qrImageBase64);
+      } else {
+        setQrError("QR code could not be loaded.");
+      }
     } catch (error) {
       console.error("QR Code Error:", error);
       setQrImage("");
@@ -177,66 +165,47 @@ const [paymentError, setPaymentError] =
   };
 
   // =========================================
-// Load Attendance History
-// =========================================
-const loadAttendanceHistory = async (
-  studentId: string | number
-) => {
-  try {
-    setAttendanceLoading(true);
-    setAttendanceError("");
+  // Load Attendance History
+  // =========================================
+  const loadAttendanceHistory = async (studentId: string | number) => {
+    try {
+      setAttendanceLoading(true);
+      setAttendanceError("");
 
-    const response = await api.get(
-      `/api/attendance/student/${studentId}`
-    );
+      const response = await api.get(`/api/attendance/student/${studentId}`);
 
-    setAttendanceHistory(response.data);
-  } catch (error) {
-    console.error(
-      "Attendance History Error:",
-      error
-    );
+      setAttendanceHistory(response.data);
+    } catch (error) {
+      console.error("Attendance History Error:", error);
 
-    setAttendanceHistory([]);
-    setAttendanceError(
-      "Failed to load attendance history."
-    );
-  } finally {
-    setAttendanceLoading(false);
-  }
-};
+      setAttendanceHistory([]);
+      setAttendanceError("Failed to load attendance history.");
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
 
+  // =========================================
+  // Load Payment History
+  // =========================================
+  const loadPaymentHistory = async (studentId: string | number) => {
+    try {
+      setPaymentLoading(true);
+      setPaymentError("");
 
-// =========================================
-// Load Payment History
-// =========================================
-const loadPaymentHistory = async (
-  studentId: string | number
-) => {
-  try {
-    setPaymentLoading(true);
-    setPaymentError("");
+      const response = await api.get(`/api/payments/student/${studentId}`);
 
-    const response = await api.get(
-      `/api/payments/student/${studentId}`
-    );
+      setPaymentHistory(response.data);
+    } catch (error) {
+      console.error("Payment History Error:", error);
 
-    setPaymentHistory(response.data);
-  } catch (error) {
-    console.error(
-      "Payment History Error:",
-      error
-    );
+      setPaymentHistory([]);
 
-    setPaymentHistory([]);
-
-    setPaymentError(
-      "Failed to load payment history."
-    );
-  } finally {
-    setPaymentLoading(false);
-  }
-};
+      setPaymentError("Failed to load payment history.");
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
 
   // =========================================
   // Load Page
@@ -254,39 +223,27 @@ const loadPaymentHistory = async (
           setIsAdmin(user.role === "Admin");
         }
 
-        const [studentResponse, classesResponse] =
-          await Promise.all([
-            api.get(`/api/students/${params.id}`),
-            api.get("/api/classes"),
-          ]);
+        const [studentResponse, classesResponse] = await Promise.all([
+          api.get(`/api/students/${params.id}`),
+          api.get("/api/classes"),
+        ]);
 
         setStudent(studentResponse.data);
         setClasses(classesResponse.data);
 
-       await Promise.all([
-  loadEnrollment(
-    params.id as string,
-    currentYear
-  ),
+        await Promise.all([
+          loadEnrollment(params.id as string, currentYear),
 
-  loadQrCode(
-    params.id as string
-  ),
+          loadQrCode(params.id as string),
 
-  loadAttendanceHistory(
-    params.id as string
-  ),
+          loadAttendanceHistory(params.id as string),
 
-  loadPaymentHistory(
-    params.id as string
-  ),
-]);
+          loadPaymentHistory(params.id as string),
+        ]);
       } catch (error) {
         console.error("Student Details Error:", error);
 
-        setError(
-          "Failed to load student details."
-        );
+        setError("Failed to load student details.");
       } finally {
         setLoading(false);
       }
@@ -298,24 +255,15 @@ const loadPaymentHistory = async (
   // =========================================
   // Academic Year Change
   // =========================================
-  const handleYearChange = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleYearChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const year = e.target.value;
 
     setAcademicYear(year);
     setEnrollmentError("");
     setSuccess("");
 
-    if (
-      year &&
-      Number(year) >= 2000 &&
-      Number(year) <= 2100
-    ) {
-      await loadEnrollment(
-        params.id as string,
-        year
-      );
+    if (year && Number(year) >= 2000 && Number(year) <= 2100) {
+      await loadEnrollment(params.id as string, year);
     } else {
       setEnrollment(null);
     }
@@ -324,26 +272,20 @@ const loadPaymentHistory = async (
   // =========================================
   // Enroll Student
   // =========================================
-  const handleEnroll = async (
-    e: React.FormEvent<HTMLFormElement>
-  ) => {
+  const handleEnroll = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (!student) return;
 
     if (!selectedClassId) {
-      setEnrollmentError(
-        "Please select a class."
-      );
+      setEnrollmentError("Please select a class.");
       return;
     }
 
     const year = Number(academicYear);
 
     if (year < 2000 || year > 2100) {
-      setEnrollmentError(
-        "Please enter a valid academic year."
-      );
+      setEnrollmentError("Please enter a valid academic year.");
       return;
     }
 
@@ -358,21 +300,13 @@ const loadPaymentHistory = async (
         academicYear: year,
       });
 
-      await loadEnrollment(
-        student.id,
-        year
-      );
+      await loadEnrollment(student.id, year);
 
       setSelectedClassId("");
 
-      setSuccess(
-        "Student enrolled successfully."
-      );
+      setSuccess("Student enrolled successfully.");
     } catch (error: any) {
-      console.error(
-        "Create Enrollment Error:",
-        error
-      );
+      console.error("Create Enrollment Error:", error);
 
       const message =
         typeof error.response?.data === "string"
@@ -392,7 +326,7 @@ const loadPaymentHistory = async (
     if (!student) return;
 
     const confirmed = window.confirm(
-      `Are you sure you want to deactivate ${student.firstName}?`
+      `Are you sure you want to deactivate ${student.firstName}?`,
     );
 
     if (!confirmed) return;
@@ -401,20 +335,13 @@ const loadPaymentHistory = async (
       setDeactivating(true);
       setError("");
 
-      await api.delete(
-        `/api/students/${student.id}`
-      );
+      await api.delete(`/api/students/${student.id}`);
 
       router.push("/dashboard/students");
     } catch (error) {
-      console.error(
-        "Deactivate Student Error:",
-        error
-      );
+      console.error("Deactivate Student Error:", error);
 
-      setError(
-        "Failed to deactivate student."
-      );
+      setError("Failed to deactivate student.");
     } finally {
       setDeactivating(false);
     }
@@ -426,22 +353,14 @@ const loadPaymentHistory = async (
   const handlePrintQr = () => {
     if (!student || !qrImage) return;
 
-    const printWindow = window.open(
-      "",
-      "_blank",
-      "width=500,height=700"
-    );
+    const printWindow = window.open("", "_blank", "width=500,height=700");
 
     if (!printWindow) {
-      setQrError(
-        "Please allow pop-ups to print the QR card."
-      );
+      setQrError("Please allow pop-ups to print the QR card.");
       return;
     }
 
-    const studentName = `${student.firstName} ${
-      student.lastName ?? ""
-    }`.trim();
+    const studentName = `${student.firstName} ${student.lastName ?? ""}`.trim();
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -543,46 +462,31 @@ const loadPaymentHistory = async (
   };
 
   if (loading) {
-    return (
-      <p className="text-gray-600">
-        Loading student...
-      </p>
-    );
+    return <p className="text-gray-600">Loading student...</p>;
   }
 
   if (error || !student) {
-    return (
-      <p className="text-red-600">
-        {error || "Student not found."}
-      </p>
-    );
+    return <p className="text-red-600">{error || "Student not found."}</p>;
   }
 
-  const studentFullName =
-    `${student.firstName} ${
-      student.lastName ?? ""
-    }`.trim();
+  const studentFullName = `${student.firstName} ${
+    student.lastName ?? ""
+  }`.trim();
 
   return (
     <div>
       {/* Header */}
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            Student Details
-          </h1>
+          <h1 className="text-3xl font-bold text-gray-900">Student Details</h1>
 
-          <p className="mt-2 text-gray-600">
-            {student.studentCode}
-          </p>
+          <p className="mt-2 text-gray-600">{student.studentCode}</p>
         </div>
 
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() =>
-              router.push(
-                `/dashboard/students/${student.id}/edit`
-              )
+              router.push(`/dashboard/students/${student.id}/edit`)
             }
             className="rounded-lg bg-blue-600 px-5 py-3 font-medium text-white hover:bg-blue-700"
           >
@@ -595,18 +499,12 @@ const loadPaymentHistory = async (
               disabled={deactivating}
               className="rounded-lg bg-red-600 px-5 py-3 font-medium text-white hover:bg-red-700 disabled:opacity-60"
             >
-              {deactivating
-                ? "Deactivating..."
-                : "Deactivate"}
+              {deactivating ? "Deactivating..." : "Deactivate"}
             </button>
           )}
 
           <button
-            onClick={() =>
-              router.push(
-                "/dashboard/students"
-              )
-            }
+            onClick={() => router.push("/dashboard/students")}
             className="rounded-lg border border-gray-300 px-5 py-3 font-medium text-gray-700 hover:bg-gray-50"
           >
             Back
@@ -621,51 +519,33 @@ const loadPaymentHistory = async (
         </h2>
 
         <div className="grid gap-6 md:grid-cols-2">
-          <Detail
-            label="Student Code"
-            value={student.studentCode}
-          />
+          <Detail label="Student Code" value={student.studentCode} />
 
-          <Detail
-            label="Full Name"
-            value={studentFullName}
-          />
+          <Detail label="Full Name" value={studentFullName} />
 
-          <Detail
-            label="Date of Birth"
-            value={student.dateOfBirth}
-          />
+          <Detail label="Date of Birth" value={student.dateOfBirth} />
 
-          <Detail
-            label="Gender"
-            value={student.gender}
-          />
+          <Detail label="Gender" value={student.gender} />
 
-          <Detail
-            label="Student Phone"
-            value={student.phone}
-          />
+          <Detail label="Student Phone" value={student.phone} />
 
-          <Detail
-            label="Parent Name"
-            value={student.parentName}
-          />
+          <Detail label="Parent Name" value={student.parentName} />
 
-          <Detail
-            label="Parent Phone"
-            value={student.parentPhone}
-          />
+          <Detail label="Parent Phone" value={student.parentPhone} />
 
-          <Detail
-            label="School"
-            value={student.school}
+          <Detail label="School" value={student.school} />
+
+          <Detail 
+            label="Joined Date" 
+            value={
+              enrollment?.joinedDate 
+                ? enrollment.joinedDate.split("T")[0] 
+                : (student.joinedDate ? student.joinedDate.split("T")[0] : "-")
+            } 
           />
 
           <div className="md:col-span-2">
-            <Detail
-              label="Address"
-              value={student.address}
-            />
+            <Detail label="Address" value={student.address} />
           </div>
         </div>
       </div>
@@ -697,9 +577,7 @@ const loadPaymentHistory = async (
         <div className="mt-6">
           {qrLoading ? (
             <div className="flex h-64 max-w-sm items-center justify-center rounded-xl border border-gray-200 bg-gray-50">
-              <p className="text-gray-500">
-                Loading QR code...
-              </p>
+              <p className="text-gray-500">Loading QR code...</p>
             </div>
           ) : qrError ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-600">
@@ -726,9 +604,7 @@ const loadPaymentHistory = async (
               </p>
             </div>
           ) : (
-            <p className="text-gray-500">
-              QR code is not available.
-            </p>
+            <p className="text-gray-500">QR code is not available.</p>
           )}
         </div>
       </div>
@@ -762,9 +638,7 @@ const loadPaymentHistory = async (
         {/* Current Enrollment */}
         {enrollment ? (
           <div className="mt-6 rounded-xl border border-green-200 bg-green-50 p-5">
-            <p className="text-sm font-medium text-green-700">
-              Enrolled
-            </p>
+            <p className="text-sm font-medium text-green-700">Enrolled</p>
 
             <p className="mt-2 text-xl font-semibold text-gray-900">
               {enrollment.className}
@@ -772,27 +646,18 @@ const loadPaymentHistory = async (
 
             <div className="mt-3 grid gap-2 text-sm text-gray-700 md:grid-cols-2">
               <p>
-                Academic Year:{" "}
-                <strong>
-                  {enrollment.academicYear}
-                </strong>
+                Academic Year: <strong>{enrollment.academicYear}</strong>
               </p>
 
               <p>
-                Student Code:{" "}
-                <strong>
-                  {enrollment.studentCode}
-                </strong>
+                Student Code: <strong>{enrollment.studentCode}</strong>
               </p>
             </div>
           </div>
         ) : (
           <>
             {isAdmin ? (
-              <form
-                onSubmit={handleEnroll}
-                className="mt-6"
-              >
+              <form onSubmit={handleEnroll} className="mt-6">
                 <div className="max-w-md">
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Select Class
@@ -800,30 +665,17 @@ const loadPaymentHistory = async (
 
                   <select
                     value={selectedClassId}
-                    onChange={(e) =>
-                      setSelectedClassId(
-                        e.target.value
-                      )
-                    }
+                    onChange={(e) => setSelectedClassId(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-900"
                   >
-                    <option value="">
-                      Select a class
-                    </option>
+                    <option value="">Select a class</option>
 
-                    {classes.map(
-                      (classItem) => (
-                        <option
-                          key={classItem.id}
-                          value={classItem.id}
-                        >
-                          {classItem.name}
-                          {classItem.subject
-                            ? ` - ${classItem.subject}`
-                            : ""}
-                        </option>
-                      )
-                    )}
+                    {classes.map((classItem) => (
+                      <option key={classItem.id} value={classItem.id}>
+                        {classItem.name}
+                        {classItem.subject ? ` - ${classItem.subject}` : ""}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -844,15 +696,12 @@ const loadPaymentHistory = async (
                   disabled={enrolling}
                   className="mt-5 rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                 >
-                  {enrolling
-                    ? "Enrolling..."
-                    : "Enroll Student"}
+                  {enrolling ? "Enrolling..." : "Enroll Student"}
                 </button>
               </form>
             ) : (
               <div className="mt-6 rounded-lg bg-gray-50 p-4 text-gray-600">
-                No enrollment found for{" "}
-                {academicYear}.
+                No enrollment found for {academicYear}.
               </div>
             )}
           </>
@@ -864,243 +713,199 @@ const loadPaymentHistory = async (
           </div>
         )}
       </div>
-{/* Attendance History */}
-<div className="mt-6 max-w-4xl overflow-hidden rounded-2xl bg-white shadow-sm">
-  <div className="border-b p-6">
-    <h2 className="text-xl font-semibold text-gray-900">
-      Attendance History
-    </h2>
+      {/* Attendance History */}
+      <div className="mt-6 max-w-4xl overflow-hidden rounded-2xl bg-white shadow-sm">
+        <div className="border-b p-6">
+          <h2 className="text-xl font-semibold text-gray-900">
+            Attendance History
+          </h2>
 
-    <p className="mt-1 text-sm text-gray-500">
-      View this student&apos;s previous attendance records.
-    </p>
-  </div>
+          <p className="mt-1 text-sm text-gray-500">
+            View this student&apos;s previous attendance records.
+          </p>
+        </div>
 
-  {attendanceError && (
-    <div className="m-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-600">
-      {attendanceError}
-    </div>
-  )}
+        {attendanceError && (
+          <div className="m-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-600">
+            {attendanceError}
+          </div>
+        )}
 
-  <div className="overflow-x-auto">
-    <table className="w-full min-w-[650px] text-left text-sm text-gray-700">
-      <thead className="bg-gray-50">
-        <tr>
-          <th className="px-6 py-4">
-            Date
-          </th>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[650px] text-left text-sm text-gray-700">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-4">Date</th>
 
-          <th className="px-6 py-4">
-            Class
-          </th>
+                <th className="px-6 py-4">Class</th>
 
-          <th className="px-6 py-4">
-            Check-In Time
-          </th>
+                <th className="px-6 py-4">Check-In Time</th>
 
-          <th className="px-6 py-4">
-            Status
-          </th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {attendanceLoading ? (
-          <tr>
-            <td
-              colSpan={4}
-              className="px-6 py-10 text-center text-gray-500"
-            >
-              Loading attendance history...
-            </td>
-          </tr>
-        ) : attendanceHistory.length > 0 ? (
-          attendanceHistory.map(
-            (record) => (
-              <tr
-                key={record.id}
-                className="border-t border-gray-100 text-gray-700 hover:bg-gray-50"
-              >
-                <td className="px-6 py-4">
-                  {record.attendanceDate}
-                </td>
-
-                <td className="px-6 py-4">
-                  {record.className}
-                </td>
-
-                <td className="px-6 py-4">
-                  {new Date(
-                    record.checkInTime
-                  ).toLocaleTimeString(
-                    "en-LK",
-                    {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }
-                  )}
-                </td>
-
-                <td className="px-6 py-4">
-                  <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700">
-                    Present
-                  </span>
-                </td>
+                <th className="px-6 py-4">Status</th>
               </tr>
-            )
-          )
-        ) : (
-          <tr>
-            <td
-              colSpan={4}
-              className="px-6 py-10 text-center text-gray-500"
-            >
-              No attendance records found.
-            </td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  </div>
+            </thead>
 
-  {/* Payment History */}
-<div className="mt-6 max-w-4xl overflow-hidden rounded-2xl bg-white shadow-sm">
-  <div className="border-b p-6">
-    <h2 className="text-xl font-semibold text-gray-900">
-      Payment History
-    </h2>
+            <tbody>
+              {attendanceLoading ? (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-6 py-10 text-center text-gray-500"
+                  >
+                    Loading attendance history...
+                  </td>
+                </tr>
+              ) : attendanceHistory.length > 0 ? (
+                attendanceHistory.map((record) => (
+                  <tr
+                    key={record.id}
+                    className="border-t border-gray-100 text-gray-700 hover:bg-gray-50"
+                  >
+                    <td className="px-6 py-4">{record.attendanceDate}</td>
 
-    <p className="mt-1 text-sm text-gray-500">
-      View this student&apos;s previous class fee payments.
-    </p>
-  </div>
+                    <td className="px-6 py-4">{record.className}</td>
 
-  {paymentError && (
-    <div className="m-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-600">
-      {paymentError}
-    </div>
-  )}
+                    <td className="px-6 py-4">
+                      {new Date(record.checkInTime).toLocaleTimeString(
+                        "en-LK",
+                        {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        },
+                      )}
+                    </td>
 
-  <div className="overflow-x-auto">
-    <table className="w-full min-w-[650px] text-left text-sm text-gray-700">
-      <thead className="bg-gray-50 text-sm font-semibold text-gray-700">
-        <tr>
-          <th className="px-6 py-4">
-            Month
-          </th>
+                    <td className="px-6 py-4">
+                      <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700">
+                        Present
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-6 py-10 text-center text-gray-500"
+                  >
+                    No attendance records found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-          <th className="px-6 py-4">
-            Class
-          </th>
+        {/* Payment History */}
+        <div className="mt-6 max-w-4xl overflow-hidden rounded-2xl bg-white shadow-sm">
+          <div className="border-b p-6">
+            <h2 className="text-xl font-semibold text-gray-900">
+              Payment History
+            </h2>
 
-          <th className="px-6 py-4">
-            Amount
-          </th>
+            <p className="mt-1 text-sm text-gray-500">
+              View this student&apos;s previous class fee payments.
+            </p>
+          </div>
 
-          <th className="px-6 py-4">
-            Paid Date
-          </th>
+          {paymentError && (
+            <div className="m-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-600">
+              {paymentError}
+            </div>
+          )}
 
-          <th className="px-6 py-4">
-            Status
-          </th>
-        </tr>
-      </thead>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[650px] text-left text-sm text-gray-700">
+              <thead className="bg-gray-50 text-sm font-semibold text-gray-700">
+                <tr>
+                  <th className="px-6 py-4">Month</th>
 
-      <tbody>
-        {paymentLoading ? (
-          <tr>
-            <td
-              colSpan={5}
-              className="px-6 py-10 text-center text-gray-500"
-            >
-              Loading payment history...
-            </td>
-          </tr>
-        ) : paymentHistory.length > 0 ? (
-          paymentHistory.map((payment) => (
-            <tr
-              key={payment.id}
-              className="border-t border-gray-100 text-gray-700 hover:bg-gray-50"
-            >
-              <td className="px-6 py-4 font-medium text-gray-900">
-                {new Date(
-                  payment.year,
-                  payment.month - 1
-                ).toLocaleString("en-LK", {
-                  month: "long",
-                  year: "numeric",
-                })}
-              </td>
+                  <th className="px-6 py-4">Class</th>
 
-              <td className="px-6 py-4">
-                {payment.className}
-              </td>
+                  <th className="px-6 py-4">Amount</th>
 
-              <td className="px-6 py-4">
-                LKR{" "}
-                {Number(
-                  payment.amount
-                ).toLocaleString("en-LK", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </td>
+                  <th className="px-6 py-4">Paid Date</th>
 
-              <td className="px-6 py-4">
-                {new Date(
-                  payment.paidAt
-                ).toLocaleDateString("en-LK", {
-                  year: "numeric",
-                  month: "short",
-                  day: "2-digit",
-                })}
-              </td>
+                  <th className="px-6 py-4">Status</th>
+                </tr>
+              </thead>
 
-              <td className="px-6 py-4">
-                <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700">
-                  Paid
-                </span>
-              </td>
-            </tr>
-          ))
-        ) : (
-          <tr>
-            <td
-              colSpan={5}
-              className="px-6 py-10 text-center text-gray-500"
-            >
-              No payment records found.
-            </td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  </div>
-</div>
-</div>
+              <tbody>
+                {paymentLoading ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-6 py-10 text-center text-gray-500"
+                    >
+                      Loading payment history...
+                    </td>
+                  </tr>
+                ) : paymentHistory.length > 0 ? (
+                  paymentHistory.map((payment) => (
+                    <tr
+                      key={payment.id}
+                      className="border-t border-gray-100 text-gray-700 hover:bg-gray-50"
+                    >
+                      <td className="px-6 py-4 font-medium text-gray-900">
+                        {new Date(
+                          payment.year,
+                          payment.month - 1,
+                        ).toLocaleString("en-LK", {
+                          month: "long",
+                          year: "numeric",
+                        })}
+                      </td>
 
+                      <td className="px-6 py-4">{payment.className}</td>
 
+                      <td className="px-6 py-4">
+                        LKR{" "}
+                        {Number(payment.amount).toLocaleString("en-LK", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+
+                      <td className="px-6 py-4">
+                        {new Date(payment.paidAt).toLocaleDateString("en-LK", {
+                          year: "numeric",
+                          month: "short",
+                          day: "2-digit",
+                        })}
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700">
+                          Paid
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-6 py-10 text-center text-gray-500"
+                    >
+                      No payment records found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function Detail({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null;
-}) {
+function Detail({ label, value }: { label: string; value: string | null }) {
   return (
     <div>
-      <p className="text-sm font-medium text-gray-500">
-        {label}
-      </p>
+      <p className="text-sm font-medium text-gray-500">{label}</p>
 
-      <p className="mt-1 text-gray-900">
-        {value || "-"}
-      </p>
+      <p className="mt-1 text-gray-900">{value || "-"}</p>
     </div>
   );
 }

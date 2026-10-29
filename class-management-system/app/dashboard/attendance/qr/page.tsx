@@ -18,6 +18,7 @@ type ClassItem = {
 };
 
 type ScanResult = {
+  message?: string;
   attendance: {
     id: number;
     studentId: number;
@@ -38,6 +39,7 @@ type ScanResult = {
     parentName: string | null;
     parentPhone: string | null;
     school: string | null;
+    joinedDate?: string;
   };
 
   classDetails: {
@@ -57,6 +59,12 @@ type ScanResult = {
     amountPaid: number;
     monthlyFee: number;
     paidAt: string | null;
+    unpaidMonths?: string[];
+  };
+
+  attendanceSummary?: {
+    joinedDate: string;
+    daysAttendedThisMonth: number;
   };
 };
 
@@ -73,9 +81,10 @@ export default function QrAttendancePage() {
   const [success, setSuccess] = useState("");
   const [warning, setWarning] = useState("");
   const [error, setError] = useState("");
+  const [recordingPayment, setRecordingPayment] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState("");
 
-  const [scanResult, setScanResult] =
-    useState<ScanResult | null>(null);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const processingRef = useRef(false);
@@ -85,6 +94,7 @@ export default function QrAttendancePage() {
     setSuccess("");
     setWarning("");
     setError("");
+    setPaymentSuccess("");
   };
 
   // =========================================
@@ -158,7 +168,7 @@ export default function QrAttendancePage() {
         () => {
           // Ignore normal scan failures
           // while camera is running.
-        }
+        },
       );
 
       setScanning(true);
@@ -167,7 +177,7 @@ export default function QrAttendancePage() {
       setScanning(false);
 
       setError(
-        "Unable to start camera. Please allow camera permission and try again."
+        "Unable to start camera. Please allow camera permission and try again.",
       );
     }
   };
@@ -199,167 +209,130 @@ export default function QrAttendancePage() {
   };
 
   // =========================================
-// Scan QR From Gallery
-// =========================================
+  // Scan QR From Gallery
+  // =========================================
 
-// =========================================
-// Scan QR From Gallery
-// =========================================
+  // =========================================
+  // Scan QR From Gallery
+  // =========================================
 
-const handleGalleryQr = async (
-  e: React.ChangeEvent<HTMLInputElement>
-) => {
-  const file = e.target.files?.[0];
+  const handleGalleryQr = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
 
-  if (!file) return;
+    if (!file) return;
 
-  clearMessages();
-  setScanResult(null);
+    clearMessages();
+    setScanResult(null);
 
-  if (!selectedClassId) {
-    setError("Please select a class first.");
-    return;
-  }
+    if (!selectedClassId) {
+      setError("Please select a class first.");
+      return;
+    }
 
-  if (!file.type.startsWith("image/")) {
-    setError("Please select a valid image.");
-    return;
-  }
+    if (!file.type.startsWith("image/")) {
+      setError("Please select a valid image.");
+      return;
+    }
 
-  if (file.size > 10 * 1024 * 1024) {
-    setError("Image size must be less than 10 MB.");
-    return;
-  }
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Image size must be less than 10 MB.");
+      return;
+    }
 
-  if (processingRef.current) return;
+    if (processingRef.current) return;
 
-  // let objectUrl = "";
+    // let objectUrl = "";
 
-  try {
-    setProcessing(true);
+    try {
+      setProcessing(true);
 
-    // Create temporary URL for selected phone image
-    const imageDataUrl = await new Promise<string>(
-  (resolve, reject) => {
-    const reader = new FileReader();
+      // Create temporary URL for selected phone image
+      const imageDataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
 
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-      } else {
-        reject(
-          new Error(
-            "Selected image could not be read."
-          )
-        );
+        reader.onload = () => {
+          if (typeof reader.result === "string") {
+            resolve(reader.result);
+          } else {
+            reject(new Error("Selected image could not be read."));
+          }
+        };
+
+        reader.onerror = () => {
+          reject(new Error("Selected image could not be read."));
+        };
+
+        reader.readAsDataURL(file);
+      });
+
+      const image = document.createElement("img");
+
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+
+        image.onerror = () =>
+          reject(
+            new Error("Selected image could not be loaded after reading."),
+          );
+
+        image.src = imageDataUrl;
+      });
+
+      // Create canvas
+      const canvas = document.createElement("canvas");
+
+      canvas.width = image.naturalWidth || image.width;
+
+      canvas.height = image.naturalHeight || image.height;
+
+      const context = canvas.getContext("2d");
+
+      if (!context) {
+        throw new Error("Image processing is not supported.");
       }
-    };
 
-    reader.onerror = () => {
-      reject(
-        new Error(
-          "Selected image could not be read."
-        )
-      );
-    };
+      // Draw phone image onto canvas
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-    reader.readAsDataURL(file);
-  }
-);
+      // Convert canvas to PNG data URL
+      const canvasImage = canvas.toDataURL("image/png");
 
-const image = document.createElement("img");
+      // Decode QR from processed image
+      const qrReader = new BrowserQRCodeReader();
 
-await new Promise<void>((resolve, reject) => {
-  image.onload = () => resolve();
+      const result = await qrReader.decodeFromImageUrl(canvasImage);
 
-  image.onerror = () =>
-    reject(
-      new Error(
-        "Selected image could not be loaded after reading."
-      )
-    );
+      const decodedText = result.getText();
 
-  image.src = imageDataUrl;
-});
+      if (!decodedText?.trim()) {
+        throw new Error("No QR code found in the image.");
+      }
 
-    // Create canvas
-    const canvas = document.createElement("canvas");
+      // Existing attendance flow
+      await handleQrScan(decodedText.trim());
+    } catch (error: unknown) {
+      console.error("Gallery QR Scan Error:", error);
 
-    canvas.width =
-      image.naturalWidth || image.width;
+      if (error instanceof Error) {
+        setError(`Gallery QR Error: ${error.name} - ${error.message}`);
+      } else {
+        setError(`Gallery QR Error: ${String(error)}`);
+      }
+    } finally {
+      if (galleryInputRef.current) {
+        galleryInputRef.current.value = "";
+      }
 
-    canvas.height =
-      image.naturalHeight || image.height;
-
-    const context = canvas.getContext("2d");
-
-    if (!context) {
-      throw new Error(
-        "Image processing is not supported."
-      );
+      setProcessing(false);
     }
-
-    // Draw phone image onto canvas
-    context.drawImage(
-      image,
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    );
-
-    // Convert canvas to PNG data URL
-    const canvasImage =
-      canvas.toDataURL("image/png");
-
-    // Decode QR from processed image
-    const qrReader = new BrowserQRCodeReader();
-
-    const result =
-      await qrReader.decodeFromImageUrl(
-        canvasImage
-      );
-
-    const decodedText = result.getText();
-
-    if (!decodedText?.trim()) {
-      throw new Error(
-        "No QR code found in the image."
-      );
-    }
-
-    // Existing attendance flow
-    await handleQrScan(decodedText.trim());
-  } catch (error: unknown) {
-  console.error("Gallery QR Scan Error:", error);
-
-  if (error instanceof Error) {
-    setError(
-      `Gallery QR Error: ${error.name} - ${error.message}`
-    );
-  } else {
-    setError(
-      `Gallery QR Error: ${String(error)}`
-    );
-  }
-} finally {
-  if (galleryInputRef.current) {
-    galleryInputRef.current.value = "";
-  }
-
-  setProcessing(false);
-}
-};
+  };
 
   // =========================================
   // Handle QR Scan
   // =========================================
 
   const handleQrScan = async (decodedText: string) => {
-    if (
-      processingRef.current ||
-      !selectedClassId
-    ) {
+    if (processingRef.current || !selectedClassId) {
       return;
     }
 
@@ -370,24 +343,19 @@ await new Promise<void>((resolve, reject) => {
     setScanResult(null);
 
     try {
-      const response = await api.post(
-        "/api/attendance/qr",
-        {
-          qrToken: decodedText.trim(),
-          classId: Number(selectedClassId),
-        }
-      );
+      const response = await api.post("/api/attendance/qr", {
+        qrToken: decodedText.trim(),
+        classId: Number(selectedClassId),
+      });
 
       const result = response.data as ScanResult;
 
       setScanResult(result);
 
-      const studentName =
-        result.attendance?.studentName ??
-        "Student";
+      const studentName = result.attendance?.studentName ?? "Student";
 
       setSuccess(
-        `${studentName} - Attendance marked successfully.`
+        `${studentName} - ${result.message ?? "Attendance marked successfully."}`,
       );
 
       await stopScanner();
@@ -399,17 +367,14 @@ await new Promise<void>((resolve, reject) => {
       const message =
         typeof responseData === "string"
           ? responseData
-          : responseData?.message ||
-            "Failed to mark attendance.";
+          : responseData?.message || "Failed to mark attendance.";
 
       if (
         status === 400 &&
-        message
-          .toLowerCase()
-          .includes("attendance already marked")
+        message.toLowerCase().includes("attendance already marked")
       ) {
         setWarning(
-          "Attendance has already been marked for this student today."
+          "Attendance has already been marked for this student today.",
         );
       } else {
         setError(message);
@@ -422,13 +387,77 @@ await new Promise<void>((resolve, reject) => {
     }
   };
 
+  const handleRecordPayment = async () => {
+    if (!scanResult || scanResult.payment.isPaid || recordingPayment) {
+      return;
+    }
+
+    const { year, month, monthlyFee } = scanResult.payment;
+    const feeMonthName = new Date(
+      Date.UTC(year, month - 1, 1),
+    ).toLocaleDateString("en", {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+
+    if (
+      !window.confirm(
+        `Record fee payment for ${feeMonthName}?\n\n` +
+          `Student: ${scanResult.student.firstName} ${scanResult.student.lastName ?? ""}\n` +
+          `Class: ${scanResult.classDetails.name}\n` +
+          `Amount: LKR ${Number(monthlyFee).toLocaleString()}`,
+      )
+    ) {
+      return;
+    }
+
+    setRecordingPayment(true);
+    setPaymentSuccess("");
+    setError("");
+
+    try {
+      const response = await api.post("/api/payments", {
+        studentId: scanResult.student.id,
+        classId: scanResult.classDetails.id,
+        year,
+        month,
+      });
+
+      setScanResult((current) =>
+        current
+          ? {
+              ...current,
+              payment: {
+                ...current.payment,
+                isPaid: true,
+                amountPaid: response.data.amount ?? monthlyFee,
+                paidAt: response.data.paidAt ?? new Date().toISOString(),
+              },
+            }
+          : current,
+      );
+      setPaymentSuccess(`Payment recorded for ${feeMonthName}.`);
+    } catch (err: any) {
+      console.error("QR Fee Payment Error:", err);
+
+      const responseData = err.response?.data;
+      const message =
+        typeof responseData === "string"
+          ? responseData
+          : responseData?.message || "Failed to record fee payment.";
+
+      setError(message);
+    } finally {
+      setRecordingPayment(false);
+    }
+  };
+
   // =========================================
   // Class Change
   // =========================================
 
-  const handleClassChange = async (
-    e: React.ChangeEvent<HTMLSelectElement>
-  ) => {
+  const handleClassChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const classId = e.target.value;
 
     if (scanning) {
@@ -442,11 +471,7 @@ await new Promise<void>((resolve, reject) => {
   };
 
   if (loading) {
-    return (
-      <p className="text-gray-600">
-        Loading QR attendance...
-      </p>
-    );
+    return <p className="text-gray-600">Loading QR attendance...</p>;
   }
 
   return (
@@ -455,21 +480,16 @@ await new Promise<void>((resolve, reject) => {
 
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            QR Attendance
-          </h1>
+          <h1 className="text-3xl font-bold text-gray-900">QR Attendance</h1>
 
           <p className="mt-2 text-gray-600">
-            Scan a student QR card to mark today&apos;s
-            attendance.
+            Scan a student QR card to mark today&apos;s attendance.
           </p>
         </div>
 
         <button
           type="button"
-          onClick={() =>
-            router.push("/dashboard/attendance")
-          }
+          onClick={() => router.push("/dashboard/attendance")}
           className="rounded-lg border border-gray-300 px-5 py-3 font-medium text-gray-700 hover:bg-gray-50"
         >
           Back
@@ -492,14 +512,9 @@ await new Promise<void>((resolve, reject) => {
           <option value="">Select Class</option>
 
           {classes.map((classItem) => (
-            <option
-              key={classItem.id}
-              value={classItem.id}
-            >
+            <option key={classItem.id} value={classItem.id}>
               {classItem.name}
-              {classItem.subject
-                ? ` - ${classItem.subject}`
-                : ""}
+              {classItem.subject ? ` - ${classItem.subject}` : ""}
             </option>
           ))}
         </select>
@@ -515,8 +530,7 @@ await new Promise<void>((resolve, reject) => {
             </h2>
 
             <p className="mt-1 text-sm text-gray-500">
-              Place the student QR card inside the
-              camera area.
+              Place the student QR card inside the camera area.
             </p>
           </div>
 
@@ -524,10 +538,7 @@ await new Promise<void>((resolve, reject) => {
             <button
               type="button"
               onClick={startScanner}
-              disabled={
-                !selectedClassId ||
-                processing
-              }
+              disabled={!selectedClassId || processing}
               className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
             >
               Start Camera
@@ -546,42 +557,35 @@ await new Promise<void>((resolve, reject) => {
 
         {/* Gallery QR Scanner */}
 
-<div className="mt-4">
-  <input
-    ref={galleryInputRef}
-    type="file"
-    accept="image/png,image/jpeg,image/webp"
-    onChange={handleGalleryQr}
-    className="hidden"
-  />
+        <div className="mt-4">
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={handleGalleryQr}
+            className="hidden"
+          />
 
-  <button
-    type="button"
-    onClick={() => galleryInputRef.current?.click()}
-    disabled={
-      !selectedClassId ||
-      processing ||
-      scanning
-    }
-    className="w-full rounded-lg border border-blue-600 bg-white px-5 py-3 font-semibold text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 sm:w-auto"
-  >
-    Upload QR from Gallery
-  </button>
+          <button
+            type="button"
+            onClick={() => galleryInputRef.current?.click()}
+            disabled={!selectedClassId || processing || scanning}
+            className="w-full rounded-lg border border-blue-600 bg-white px-5 py-3 font-semibold text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 sm:w-auto"
+          >
+            Upload QR from Gallery
+          </button>
 
-  <p className="mt-2 text-sm text-gray-500">
-    Select a student QR image from your phone.
-  </p>
+          <p className="mt-2 text-sm text-gray-500">
+            Select a student QR image from your phone.
+          </p>
 
-  {/* Hidden element required for gallery QR decoding */}
-</div>
+          {/* Hidden element required for gallery QR decoding */}
+        </div>
 
         {/* Camera Area */}
 
         <div className="mx-auto mt-6 max-w-lg">
-          <div
-            id="qr-reader"
-            className="overflow-hidden rounded-xl"
-          />
+          <div id="qr-reader" className="overflow-hidden rounded-xl" />
         </div>
 
         {processing && (
@@ -614,190 +618,238 @@ await new Promise<void>((resolve, reject) => {
 
         {scanResult && (
           <div className="mt-6 space-y-5">
-         {/* Student Details */}
-<div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-  <div className="border-b border-gray-200 px-5 py-4">
-    <h3 className="text-lg font-bold text-gray-900">
-      Student Details
-    </h3>
-  </div>
+            {/* Student Details */}
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+              <div className="border-b border-gray-200 px-5 py-4">
+                <h3 className="text-lg font-bold text-gray-900">
+                  Student Details
+                </h3>
+              </div>
 
-  <div className="px-5">
-    {[
-      [
-        "Name",
-        `${scanResult.student.firstName} ${
-          scanResult.student.lastName ?? ""
-        }`.trim(),
-      ],
-      ["Student ID", scanResult.student.studentCode],
-      ["Phone", scanResult.student.phone || "-"],
-      ["Parent", scanResult.student.parentName || "-"],
-      ["Parent Phone", scanResult.student.parentPhone || "-"],
-      ["School", scanResult.student.school || "-"],
-    ].map(([label, value]) => (
-      <div
-        key={label}
-        className="flex items-start justify-between gap-5 border-b border-gray-100 py-3.5 last:border-b-0"
-      >
-        <span className="shrink-0 text-sm font-medium text-gray-500">
-          {label}
-        </span>
+              <div className="px-5">
+                {[
+                  [
+                    "Name",
+                    `${scanResult.student.firstName} ${
+                      scanResult.student.lastName ?? ""
+                    }`.trim(),
+                  ],
+                  ["Student ID", scanResult.student.studentCode],
+                  ["Phone", scanResult.student.phone || "-"],
+                  ["Parent", scanResult.student.parentName || "-"],
+                  ["Parent Phone", scanResult.student.parentPhone || "-"],
+                  ["School", scanResult.student.school || "-"],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="flex items-start justify-between gap-5 border-b border-gray-100 py-3.5 last:border-b-0"
+                  >
+                    <span className="shrink-0 text-sm font-medium text-gray-500">
+                      {label}
+                    </span>
 
-        <span className="break-words text-right text-sm font-semibold text-gray-900">
-          {value}
-        </span>
-      </div>
-    ))}
-  </div>
-</div>
+                    <span className="break-words text-right text-sm font-semibold text-gray-900">
+                      {value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {/* Class Details */}
-<div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-  <div className="border-b border-gray-200 px-5 py-4">
-    <h3 className="text-lg font-bold text-gray-900">
-      Class Details
-    </h3>
-  </div>
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+              <div className="border-b border-gray-200 px-5 py-4">
+                <h3 className="text-lg font-bold text-gray-900">
+                  Class Details
+                </h3>
+              </div>
 
-  <div className="px-5">
-    {[
-      ["Class", scanResult.classDetails.name],
-      ["Subject", scanResult.classDetails.subject || "-"],
-      ["Teacher", scanResult.classDetails.teacherName || "-"],
-      [
-        "Monthly Fee",
-        `LKR ${Number(
-          scanResult.classDetails.monthlyFee
-        ).toLocaleString()}`,
-      ],
-      ["Day", scanResult.classDetails.day || "-"],
-      ["Start Time", scanResult.classDetails.startTime || "-"],
-    ].map(([label, value]) => (
-      <div
-        key={label}
-        className="flex items-start justify-between gap-5 border-b border-gray-100 py-3.5 last:border-b-0"
-      >
-        <span className="shrink-0 text-sm font-medium text-gray-500">
-          {label}
-        </span>
+              <div className="px-5">
+                {[
+                  ["Class", scanResult.classDetails.name],
+                  ["Subject", scanResult.classDetails.subject || "-"],
+                  ["Teacher", scanResult.classDetails.teacherName || "-"],
+                  [
+                    "Monthly Fee",
+                    `LKR ${Number(
+                      scanResult.classDetails.monthlyFee,
+                    ).toLocaleString()}`,
+                  ],
+                  ["Day", scanResult.classDetails.day || "-"],
+                  ["Start Time", scanResult.classDetails.startTime || "-"],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="flex items-start justify-between gap-5 border-b border-gray-100 py-3.5 last:border-b-0"
+                  >
+                    <span className="shrink-0 text-sm font-medium text-gray-500">
+                      {label}
+                    </span>
 
-        <span className="break-words text-right text-sm font-semibold text-gray-900">
-          {value}
-        </span>
-      </div>
-    ))}
-  </div>
-</div>
+                    <span className="break-words text-right text-sm font-semibold text-gray-900">
+                      {value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-           {/* Payment Status */}
-<div
-  className={`overflow-hidden rounded-2xl border ${
-    scanResult.payment.isPaid
-      ? "border-green-200 bg-green-50"
-      : "border-amber-200 bg-amber-50"
-  }`}
->
-  <div className="flex items-center justify-between gap-3 border-b border-black/5 px-5 py-4">
-    <div>
-      <h3 className="text-lg font-bold text-gray-900">
-        Monthly Payment
-      </h3>
+            {/* Payment Status */}
+            <div
+              className={`overflow-hidden rounded-2xl border ${
+                scanResult.payment.isPaid
+                  ? "border-green-200 bg-green-50"
+                  : "border-amber-200 bg-amber-50"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3 border-b border-black/5 px-5 py-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    Monthly Payment
+                  </h3>
 
-      <p className="mt-1 text-sm font-medium text-gray-900">
-        {scanResult.payment.year} / {scanResult.payment.month}
-      </p>
-    </div>
+                  <p className="mt-1 text-sm font-medium text-gray-900">
+                    Fee month:{" "}
+                    {new Date(
+                      Date.UTC(
+                        scanResult.payment.year,
+                        scanResult.payment.month - 1,
+                        1,
+                      ),
+                    ).toLocaleDateString("en", {
+                      month: "long",
+                      year: "numeric",
+                      timeZone: "UTC",
+                    })}
+                  </p>
+                </div>
 
-    <span
-      className={`rounded-full px-3 py-1.5 text-sm font-bold ${
-        scanResult.payment.isPaid
-          ? "bg-green-600 text-white"
-          : "bg-amber-500 text-white"
-      }`}
-    >
-      {scanResult.payment.isPaid
-        ? "✓ PAID"
-        : "⚠ UNPAID"}
-    </span>
-  </div>
+                <span
+                  className={`rounded-full px-3 py-1.5 text-sm font-bold ${
+                    scanResult.payment.isPaid
+                      ? "bg-green-600 text-white"
+                      : "bg-amber-500 text-white"
+                  }`}
+                >
+                  {scanResult.payment.isPaid ? "✓ PAID" : "⚠ UNPAID"}
+                </span>
+              </div>
 
-  <div className="px-5">
-    <div className="flex items-center justify-between gap-5 border-b border-black/5 py-3.5">
-      <span className="text-sm font-medium text-gray-600">
-        Monthly Fee
-      </span>
+              <div className="px-5">
+                <div className="flex items-center justify-between gap-5 border-b border-black/5 py-3.5">
+                  <span className="text-sm font-medium text-gray-600">
+                    Monthly Fee
+                  </span>
 
-      <span className="text-sm font-bold text-gray-900">
-        LKR{" "}
-        {Number(
-          scanResult.payment.monthlyFee
-        ).toLocaleString()}
-      </span>
-    </div>
+                  <span className="text-sm font-bold text-gray-900">
+                    LKR {Number(scanResult.payment.monthlyFee).toLocaleString()}
+                  </span>
+                </div>
 
-    <div className="flex items-center justify-between gap-5 py-3.5">
-      <span className="text-sm font-medium text-gray-600">
-        Amount Paid
-      </span>
+                <div className="flex items-center justify-between gap-5 py-3.5">
+                  <span className="text-sm font-medium text-gray-600">
+                    Amount Paid
+                  </span>
 
-      <span className="text-sm font-bold text-gray-900">
-        LKR{" "}
-        {Number(
-          scanResult.payment.amountPaid
-        ).toLocaleString()}
-      </span>
-    </div>
-  </div>
-</div>
+                  <span className="text-sm font-bold text-gray-900">
+                    LKR {Number(scanResult.payment.amountPaid).toLocaleString()}
+                  </span>
+                </div>
 
-           {/* Attendance Details */}
-<div className="overflow-hidden rounded-2xl border border-green-200 bg-green-50">
-  <div className="border-b border-green-200 px-5 py-4">
-    <h3 className="text-lg font-bold text-green-800">
-      ✓ Attendance Marked
-    </h3>
-  </div>
+                {paymentSuccess && (
+                  <p className="border-t border-black/5 py-3.5 text-sm font-semibold text-green-700">
+                    ✓ {paymentSuccess}
+                  </p>
+                )}
 
-  <div className="px-5">
-    <div className="flex items-center justify-between gap-5 border-b border-green-200 py-3.5">
-      <span className="text-sm font-medium text-gray-600">
-        Date
-      </span>
+                {!scanResult.payment.isPaid && (
+                  <button
+                    type="button"
+                    onClick={handleRecordPayment}
+                    disabled={recordingPayment}
+                    className="mb-4 w-full rounded-lg bg-green-600 px-5 py-3 font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                  >
+                    {recordingPayment ? "Recording Payment..." : "Record Fee Payment"}
+                  </button>
+                )}
+              </div>
+            </div>
 
-      <span className="text-sm font-bold text-gray-900">
-        {scanResult.attendance.attendanceDate}
-      </span>
-    </div>
+            {scanResult.attendanceSummary && (
+              <div className="overflow-hidden rounded-2xl border border-blue-200 bg-blue-50">
+                <div className="border-b border-blue-200 px-5 py-4">
+                  <h3 className="text-lg font-bold text-blue-900">
+                    Class & Attendance Summary
+                  </h3>
+                </div>
 
-    <div className="flex items-center justify-between gap-5 py-3.5">
-      <span className="text-sm font-medium text-gray-600">
-        Class
-      </span>
+                <div className="px-5">
+                  <div className="flex items-center justify-between gap-5 border-b border-blue-100 py-3.5">
+                    <span className="text-sm font-medium text-gray-600">
+                      Joined Date
+                    </span>
+                    <span className="text-sm font-bold text-gray-900">
+                      {scanResult.attendanceSummary.joinedDate || "-"}
+                    </span>
+                  </div>
 
-      <span className="text-right text-sm font-bold text-gray-900">
-        {scanResult.attendance.className}
-      </span>
-    </div>
-  </div>
-</div>
+                  <div className="flex items-center justify-between gap-5 py-3.5">
+                    <span className="text-sm font-medium text-gray-600">
+                      Days Attended This Month
+                    </span>
+                    <span className="rounded-full bg-blue-600 px-3 py-1 text-sm font-bold text-white">
+                      {scanResult.attendanceSummary.daysAttendedThisMonth} Days
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Attendance Details */}
+            <div className="overflow-hidden rounded-2xl border border-green-200 bg-green-50">
+              <div className="border-b border-green-200 px-5 py-4">
+                <h3 className="text-lg font-bold text-green-800">
+                  ✓ Attendance Marked
+                </h3>
+              </div>
+
+              <div className="px-5">
+                <div className="flex items-center justify-between gap-5 border-b border-green-200 py-3.5">
+                  <span className="text-sm font-medium text-gray-600">
+                    Date
+                  </span>
+
+                  <span className="text-sm font-bold text-gray-900">
+                    {scanResult.attendance.attendanceDate}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-5 py-3.5">
+                  <span className="text-sm font-medium text-gray-600">
+                    Class
+                  </span>
+
+                  <span className="text-right text-sm font-bold text-gray-900">
+                    {scanResult.attendance.className}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Scan Another Student */}
 
-        {(success || warning || error) &&
-          !scanning &&
-          selectedClassId && (
-            <button
-              type="button"
-              onClick={startScanner}
-              disabled={processing}
-              className="mt-6 w-full rounded-lg bg-gray-900 px-5 py-3 font-semibold text-white hover:bg-gray-800 disabled:opacity-60 sm:w-auto"
-            >
-              Scan Another Student
-            </button>
-          )}
+        {(success || warning || error) && !scanning && selectedClassId && (
+          <button
+            type="button"
+            onClick={startScanner}
+            disabled={processing}
+            className="mt-6 w-full rounded-lg bg-gray-900 px-5 py-3 font-semibold text-white hover:bg-gray-800 disabled:opacity-60 sm:w-auto"
+          >
+            Scan Another Student
+          </button>
+        )}
       </div>
     </div>
   );

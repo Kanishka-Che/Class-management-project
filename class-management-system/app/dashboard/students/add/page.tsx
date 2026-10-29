@@ -16,6 +16,7 @@ export default function AddStudentPage() {
   const router = useRouter();
 
   const currentYear = new Date().getFullYear();
+  const todayDate = new Date().toISOString().split("T")[0];
 
   const [form, setForm] = useState({
     firstName: "",
@@ -27,6 +28,7 @@ export default function AddStudentPage() {
     parentPhone: "",
     address: "",
     school: "",
+    joinedDate: todayDate,
     classId: "",
     academicYear: currentYear.toString(),
   });
@@ -134,6 +136,9 @@ export default function AddStudentPage() {
 
         school:
           form.school.trim() || null,
+
+          joinedDate:
+          form.joinedDate || todayDate,
 
         classId: Number(form.classId),
 
@@ -266,6 +271,15 @@ export default function AddStudentPage() {
             value={form.parentPhone}
             onChange={handleChange}
             placeholder="07XXXXXXXX"
+          />
+
+          <Input
+            label="Joined Date *"
+            name="joinedDate"
+            type="date"
+            value={form.joinedDate}
+            onChange={handleChange}
+            required
           />
 
           <Input

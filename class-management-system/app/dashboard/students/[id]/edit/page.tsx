@@ -50,6 +50,7 @@ export default function EditStudentPage() {
     parentPhone: "",
     address: "",
     school: "",
+    joinedDate: "",
   });
 
   // =========================================
@@ -57,18 +58,13 @@ export default function EditStudentPage() {
   // =========================================
   const [classes, setClasses] = useState<ClassItem[]>([]);
 
-  const [academicYear, setAcademicYear] = useState(
-    currentYear.toString()
-  );
+  const [academicYear, setAcademicYear] = useState(currentYear.toString());
 
-  const [selectedClassId, setSelectedClassId] =
-    useState("");
+  const [selectedClassId, setSelectedClassId] = useState("");
 
-  const [enrollment, setEnrollment] =
-    useState<Enrollment | null>(null);
+  const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
 
-  const [loadingEnrollment, setLoadingEnrollment] =
-    useState(false);
+  const [loadingEnrollment, setLoadingEnrollment] = useState(false);
 
   // =========================================
   // User
@@ -87,31 +83,33 @@ export default function EditStudentPage() {
   // =========================================
   const loadEnrollment = async (
     studentId: string | number,
-    year: string | number
+    year: string | number,
   ) => {
     try {
       setLoadingEnrollment(true);
 
       const response = await api.get<Enrollment>(
-        `/api/enrollments/student/${studentId}/year/${year}`
+        `/api/enrollments/student/${studentId}/year/${year}`,
       );
 
       const enrollmentData = response.data;
 
       setEnrollment(enrollmentData);
 
-      setSelectedClassId(
-        enrollmentData.classId.toString()
-      );
+      setSelectedClassId(enrollmentData.classId.toString());
+
+      if (enrollmentData.joinedDate) {
+      setForm((prev) => ({
+        ...prev,
+        joinedDate: enrollmentData.joinedDate.split("T")[0],
+      }));
+    }
     } catch (error: any) {
       if (error.response?.status === 404) {
         setEnrollment(null);
         setSelectedClassId("");
       } else {
-        console.error(
-          "Load Enrollment Error:",
-          error
-        );
+        console.error("Load Enrollment Error:", error);
 
         setEnrollment(null);
         setSelectedClassId("");
@@ -133,72 +131,54 @@ export default function EditStudentPage() {
         // -------------------------------------
         // Logged-in User
         // -------------------------------------
-        const storedUser =
-          sessionStorage.getItem("user");
+        const storedUser = sessionStorage.getItem("user");
 
         if (storedUser) {
           try {
-            const user: User =
-              JSON.parse(storedUser);
+            const user: User = JSON.parse(storedUser);
 
             setIsAdmin(user.role === "Admin");
           } catch (error) {
-            console.error(
-              "Failed to read user:",
-              error
-            );
+            console.error("Failed to read user:", error);
           }
         }
 
         // -------------------------------------
         // Student + Classes
         // -------------------------------------
-        const [
-          studentResponse,
-          classesResponse,
-        ] = await Promise.all([
-          api.get(
-            `/api/students/${params.id}`
-          ),
+        const [studentResponse, classesResponse] = await Promise.all([
+          api.get(`/api/students/${params.id}`),
 
-          api.get<ClassItem[]>(
-            "/api/classes"
-          ),
+          api.get<ClassItem[]>("/api/classes"),
         ]);
 
-        const student =
-          studentResponse.data;
+        const student = studentResponse.data;
 
         // -------------------------------------
         // Set Student Form
         // -------------------------------------
         setForm({
-          firstName:
-            student.firstName ?? "",
+          firstName: student.firstName ?? "",
 
-          lastName:
-            student.lastName ?? "",
+          lastName: student.lastName ?? "",
 
-          dateOfBirth:
-            student.dateOfBirth ?? "",
+          dateOfBirth: student.dateOfBirth ?? "",
 
-          gender:
-            student.gender ?? "",
+          gender: student.gender ?? "",
 
-          phone:
-            student.phone ?? "",
+          phone: student.phone ?? "",
 
-          parentName:
-            student.parentName ?? "",
+          parentName: student.parentName ?? "",
 
-          parentPhone:
-            student.parentPhone ?? "",
+          parentPhone: student.parentPhone ?? "",
 
-          address:
-            student.address ?? "",
+          address: student.address ?? "",
 
-          school:
-            student.school ?? "",
+          school: student.school ?? "",
+
+          joinedDate: student.joinedDate
+            ? student.joinedDate.split("T")[0]
+            : "",
         });
 
         setClasses(classesResponse.data);
@@ -206,19 +186,11 @@ export default function EditStudentPage() {
         // -------------------------------------
         // Load Current Year Enrollment
         // -------------------------------------
-        await loadEnrollment(
-          params.id as string,
-          currentYear
-        );
+        await loadEnrollment(params.id as string, currentYear);
       } catch (error) {
-        console.error(
-          "Load Student Error:",
-          error
-        );
+        console.error("Load Student Error:", error);
 
-        setError(
-          "Failed to load student."
-        );
+        setError("Failed to load student.");
       } finally {
         setLoading(false);
       }
@@ -232,24 +204,19 @@ export default function EditStudentPage() {
   // =========================================
   const handleChange = (
     e: React.ChangeEvent<
-      | HTMLInputElement
-      | HTMLSelectElement
-      | HTMLTextAreaElement
-    >
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
   ) => {
     setForm({
       ...form,
-      [e.target.name]:
-        e.target.value,
+      [e.target.name]: e.target.value,
     });
   };
 
   // =========================================
   // Academic Year Change
   // =========================================
-  const handleYearChange = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleYearChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const year = e.target.value;
 
     setAcademicYear(year);
@@ -263,10 +230,7 @@ export default function EditStudentPage() {
       numericYear >= 2000 &&
       numericYear <= 2100
     ) {
-      await loadEnrollment(
-        params.id as string,
-        year
-      );
+      await loadEnrollment(params.id as string, year);
     } else {
       setEnrollment(null);
       setSelectedClassId("");
@@ -276,9 +240,7 @@ export default function EditStudentPage() {
   // =========================================
   // Update Student
   // =========================================
-  const handleSubmit = async (
-    e: React.FormEvent<HTMLFormElement>
-  ) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     setError("");
@@ -287,9 +249,7 @@ export default function EditStudentPage() {
     // Validate Student
     // -----------------------------------------
     if (!form.firstName.trim()) {
-      setError(
-        "First name is required."
-      );
+      setError("First name is required.");
 
       return;
     }
@@ -297,17 +257,10 @@ export default function EditStudentPage() {
     // -----------------------------------------
     // Validate Academic Year
     // -----------------------------------------
-    const year =
-      Number(academicYear);
+    const year = Number(academicYear);
 
-    if (
-      !Number.isInteger(year) ||
-      year < 2000 ||
-      year > 2100
-    ) {
-      setError(
-        "Please enter a valid academic year."
-      );
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      setError("Please enter a valid academic year.");
 
       return;
     }
@@ -315,13 +268,8 @@ export default function EditStudentPage() {
     // -----------------------------------------
     // Admin must select a class
     // -----------------------------------------
-    if (
-      isAdmin &&
-      !selectedClassId
-    ) {
-      setError(
-        `Please select a class for ${academicYear}.`
-      );
+    if (isAdmin && !selectedClassId) {
+      setError(`Please select a class for ${academicYear}.`);
 
       return;
     }
@@ -332,78 +280,45 @@ export default function EditStudentPage() {
       // =====================================
       // 1. Update Student Information
       // =====================================
-      await api.put(
-        `/api/students/${params.id}`,
-        {
-          firstName:
-            form.firstName.trim(),
+      await api.put(`/api/students/${params.id}`, {
+        firstName: form.firstName.trim(),
 
-          lastName:
-            form.lastName.trim() ||
-            null,
+        lastName: form.lastName.trim() || null,
 
-          dateOfBirth:
-            form.dateOfBirth ||
-            null,
+        dateOfBirth: form.dateOfBirth || null,
 
-          gender:
-            form.gender ||
-            null,
+        gender: form.gender || null,
 
-          phone:
-            form.phone.trim() ||
-            null,
+        phone: form.phone.trim() || null,
 
-          parentName:
-            form.parentName.trim() ||
-            null,
+        parentName: form.parentName.trim() || null,
 
-          parentPhone:
-            form.parentPhone.trim() ||
-            null,
+        parentPhone: form.parentPhone.trim() || null,
 
-          address:
-            form.address.trim() ||
-            null,
+        address: form.address.trim() || null,
 
-          school:
-            form.school.trim() ||
-            null,
-        }
-      );
+        school: form.school.trim() || null,
+
+        joinedDate: form.joinedDate || null,
+      });
 
       // =====================================
       // 2. Enrollment - Admin Only
       // =====================================
-      if (
-        isAdmin &&
-        selectedClassId
-      ) {
+      if (isAdmin && selectedClassId) {
         // -----------------------------------
         // Existing Enrollment
         // -----------------------------------
-        if (enrollment) {
-          const classChanged =
-            Number(selectedClassId) !==
-            enrollment.classId;
-
-          if (classChanged) {
-            await api.put(
-              `/api/enrollments/student/${params.id}/year/${year}`,
-              {
-                studentId:
-                  Number(params.id),
-
-                classId:
-                  Number(
-                    selectedClassId
-                  ),
-
-                academicYear:
-                  year,
-              }
-            );
-          }
+       if (enrollment) {
+          await api.put(
+            `/api/enrollments/student/${params.id}/year/${year}`,
+            {
+              studentId: Number(params.id),
+              classId: Number(selectedClassId),
+              academicYear: year,
+              joinedDate: form.joinedDate || null, 
+            },
+          );
         }
 
         // -----------------------------------
@@ -411,45 +326,30 @@ export default function EditStudentPage() {
         // Create New Enrollment
         // -----------------------------------
         else {
-          await api.post(
-            "/api/enrollments",
-            {
-              studentId:
-                Number(params.id),
+          await api.post("/api/enrollments", {
+            studentId: Number(params.id),
 
-              classId:
-                Number(
-                  selectedClassId
-                ),
+            classId: Number(selectedClassId),
 
-              academicYear:
-                year,
-            }
-          );
+            academicYear: year,
+            joinedDate: form.joinedDate || null,
+          });
         }
       }
 
       // =====================================
       // Success
       // =====================================
-      router.push(
-        `/dashboard/students/${params.id}`
-      );
+      router.push(`/dashboard/students/${params.id}`);
     } catch (error: any) {
-      console.error(
-        "Update Student Error:",
-        error
-      );
+      console.error("Update Student Error:", error);
 
-      const message =
-        error.response?.data;
+      const message = error.response?.data;
 
       if (typeof message === "string") {
         setError(message);
       } else {
-        setError(
-          "Failed to update student. Please check the details."
-        );
+        setError("Failed to update student. Please check the details.");
       }
     } finally {
       setSaving(false);
@@ -460,11 +360,7 @@ export default function EditStudentPage() {
   // Loading
   // =========================================
   if (loading) {
-    return (
-      <p className="text-gray-600">
-        Loading student...
-      </p>
-    );
+    return <p className="text-gray-600">Loading student...</p>;
   }
 
   return (
@@ -473,9 +369,7 @@ export default function EditStudentPage() {
           Header
           ===================================== */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-950">
-          Edit Student
-        </h1>
+        <h1 className="text-3xl font-bold text-gray-950">Edit Student</h1>
 
         <p className="mt-2 text-gray-700">
           Update student information and class enrollment
@@ -544,17 +438,11 @@ export default function EditStudentPage() {
               onChange={handleChange}
               className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
             >
-              <option value="">
-                Select Gender
-              </option>
+              <option value="">Select Gender</option>
 
-              <option value="Male">
-                Male
-              </option>
+              <option value="Male">Male</option>
 
-              <option value="Female">
-                Female
-              </option>
+              <option value="Female">Female</option>
             </select>
           </div>
 
@@ -588,6 +476,14 @@ export default function EditStudentPage() {
             onChange={handleChange}
           />
 
+          <Input
+            label="Joined Date"
+            name="joinedDate"
+            type="date"
+            value={form.joinedDate}
+            onChange={handleChange}
+          />
+
           <div className="md:col-span-2">
             <label className="mb-2 block text-sm font-semibold text-gray-900">
               Address
@@ -612,9 +508,7 @@ export default function EditStudentPage() {
             Class Enrollment
             =================================== */}
         <div>
-          <h2 className="text-xl font-bold text-gray-950">
-            Class Enrollment
-          </h2>
+          <h2 className="text-xl font-bold text-gray-950">Class Enrollment</h2>
 
           <p className="mt-1 text-sm text-gray-600">
             View or update the student's class for an academic year
@@ -648,38 +542,21 @@ export default function EditStudentPage() {
 
             <select
               value={selectedClassId}
-              onChange={(e) =>
-                setSelectedClassId(
-                  e.target.value
-                )
-              }
-              disabled={
-                !isAdmin ||
-                loadingEnrollment ||
-                saving
-              }
+              onChange={(e) => setSelectedClassId(e.target.value)}
+              disabled={!isAdmin || loadingEnrollment || saving}
               className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-medium text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-gray-100"
             >
               <option value="">
-                {loadingEnrollment
-                  ? "Loading enrollment..."
-                  : "Select Class"}
+                {loadingEnrollment ? "Loading enrollment..." : "Select Class"}
               </option>
 
-              {classes.map(
-                (classItem) => (
-                  <option
-                    key={classItem.id}
-                    value={classItem.id}
-                  >
-                    {classItem.name}
+              {classes.map((classItem) => (
+                <option key={classItem.id} value={classItem.id}>
+                  {classItem.name}
 
-                    {classItem.subject
-                      ? ` - ${classItem.subject}`
-                      : ""}
-                  </option>
-                )
-              )}
+                  {classItem.subject ? ` - ${classItem.subject}` : ""}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -703,33 +580,28 @@ export default function EditStudentPage() {
 
                 <p className="mt-2 text-sm text-gray-700">
                   Current enrollment for{" "}
-                  <strong>
-                    {enrollment.academicYear}
-                  </strong>
+                  <strong>{enrollment.academicYear}</strong>
                 </p>
 
                 {isAdmin && (
                   <p className="mt-2 text-sm text-gray-600">
-                    Select another class above and click
-                    Update Student to change the class.
+                    Select another class above and click Update Student to
+                    change the class.
                   </p>
                 )}
               </div>
             ) : (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
-                <p className="font-semibold text-amber-900">
-                  Not Enrolled
-                </p>
+                <p className="font-semibold text-amber-900">Not Enrolled</p>
 
                 <p className="mt-1 text-sm text-amber-800">
-                  No class enrollment found for{" "}
-                  {academicYear}.
+                  No class enrollment found for {academicYear}.
                 </p>
 
                 {isAdmin && (
                   <p className="mt-2 text-sm text-amber-800">
-                    Select a class above and click
-                    Update Student to enroll this student.
+                    Select a class above and click Update Student to enroll this
+                    student.
                   </p>
                 )}
               </div>
@@ -739,8 +611,7 @@ export default function EditStudentPage() {
 
         {!isAdmin && (
           <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-            Class enrollment can only be changed by an
-            Admin.
+            Class enrollment can only be changed by an Admin.
           </div>
         )}
 
@@ -750,9 +621,7 @@ export default function EditStudentPage() {
         <div className="mt-8 flex justify-end gap-3 border-t border-gray-200 pt-6">
           <button
             type="button"
-            onClick={() =>
-              router.back()
-            }
+            onClick={() => router.back()}
             disabled={saving}
             className="rounded-lg border border-gray-300 px-5 py-3 font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
           >
@@ -761,15 +630,10 @@ export default function EditStudentPage() {
 
           <button
             type="submit"
-            disabled={
-              saving ||
-              loadingEnrollment
-            }
+            disabled={saving || loadingEnrollment}
             className="rounded-lg bg-blue-700 px-6 py-3 font-semibold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving
-              ? "Updating..."
-              : "Update Student"}
+            {saving ? "Updating..." : "Update Student"}
           </button>
         </div>
       </form>

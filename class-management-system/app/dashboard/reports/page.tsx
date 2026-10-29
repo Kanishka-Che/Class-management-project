@@ -12,6 +12,15 @@ type AttendanceRecord = {
   className: string;
   attendanceDate: string;
   checkInTime: string;
+  daysAttended?: number;
+};
+
+type MonthlyAttendanceRow = {
+  key: string;
+  record: AttendanceRecord;
+  dates: string[];
+  times: string[];
+  daysPresent: number;
 };
 
 type PaymentRecord = {
@@ -30,6 +39,7 @@ type PaymentRecord = {
 type MonthlyAttendanceReport = {
   year: number;
   month: number;
+  totalStudents?: number;
   totalAttendance: number;
   attendances: AttendanceRecord[];
 };
@@ -43,9 +53,15 @@ type DailyAttendanceReport = {
 type MonthlyPaymentReport = {
   year: number;
   month: number;
+  totalStudents?: number;
   totalPayments: number;
   totalCollected: number;
   payments: PaymentRecord[];
+};
+
+type EnrollmentSummary = {
+  studentId: number;
+  joinedDate: string;
 };
 
 type ClassItem = {
@@ -66,6 +82,7 @@ type ClassSummary = {
   teacherName: string | null;
   monthlyFee: number;
   year: number;
+  month?: number;
   totalStudents: number;
   totalAttendance: number;
   totalPayments: number;
@@ -230,6 +247,10 @@ export default function ReportsPage() {
       return;
     }
 
+    const classQuery = selectedClassId
+      ? `&classId=${Number(selectedClassId)}`
+      : "";
+
     try {
       setLoading(true);
       setError("");
@@ -239,21 +260,58 @@ export default function ReportsPage() {
         paymentResponse,
       ] = await Promise.all([
         api.get(
-          `/api/reports/attendance/monthly?year=${yearNumber}&month=${monthNumber}`
+          `/api/reports/attendance/monthly?year=${yearNumber}&month=${monthNumber}${classQuery}`
         ),
 
         api.get(
-          `/api/reports/payments/monthly?year=${yearNumber}&month=${monthNumber}`
+          `/api/reports/payments/monthly?year=${yearNumber}&month=${monthNumber}${classQuery}`
         ),
       ]);
 
-      setAttendanceReport(
-        attendanceResponse.data
-      );
+      let totalStudents =
+        attendanceResponse.data.totalStudents ??
+        paymentResponse.data.totalStudents;
 
-      setPaymentReport(
-        paymentResponse.data
-      );
+      if (totalStudents === undefined) {
+        const classIds = selectedClassId
+          ? [Number(selectedClassId)]
+          : classes
+              .filter((classItem) => classItem.isActive)
+              .map((classItem) => classItem.id);
+
+        const enrollmentResponses = await Promise.all(
+          classIds.map((classId) =>
+            api.get<EnrollmentSummary[]>(
+              `/api/enrollments/class/${classId}/year/${yearNumber}`,
+            ),
+          ),
+        );
+
+        const monthEnd = new Date(
+          Date.UTC(yearNumber, monthNumber, 0),
+        );
+        totalStudents = new Set(
+          enrollmentResponses.flatMap((response) =>
+            response.data
+              .filter(
+                (enrollment) =>
+                  new Date(enrollment.joinedDate).getTime() <=
+                  monthEnd.getTime(),
+              )
+              .map((enrollment) => enrollment.studentId),
+          ),
+        ).size;
+      }
+
+      setAttendanceReport({
+        ...attendanceResponse.data,
+        totalStudents,
+      });
+
+      setPaymentReport({
+        ...paymentResponse.data,
+        totalStudents,
+      });
     } catch (error: any) {
       console.error(
         "Load Reports Error:",
@@ -333,11 +391,29 @@ export default function ReportsPage() {
       setClassLoading(true);
       setError("");
 
-      const response = await api.get(
-        `/api/reports/class/${selectedClassId}/year/${yearNumber}`
+      const monthNumber = Number(month);
+      const classId = Number(selectedClassId);
+      const [summaryResponse, paymentsResponse] = await Promise.all([
+        api.get(
+          `/api/reports/class/${classId}/year/${yearNumber}?month=${monthNumber}`
+        ),
+        api.get<MonthlyPaymentReport>(
+          `/api/reports/payments/monthly?year=${yearNumber}&month=${monthNumber}`
+        ),
+      ]);
+
+      const monthPayments = paymentsResponse.data.payments.filter(
+        (payment) => payment.classId === classId,
       );
 
-      setClassSummary(response.data);
+      setClassSummary({
+        ...summaryResponse.data,
+        totalPayments: monthPayments.length,
+        totalCollected: monthPayments.reduce(
+          (total, payment) => total + payment.amount,
+          0,
+        ),
+      });
     } catch (error: any) {
       console.error(
         "Load Class Summary Error:",
@@ -422,6 +498,13 @@ export default function ReportsPage() {
     );
   };
 
+  const formatAttendanceDate = (date: string) => {
+    return new Date(date).toLocaleDateString("en-LK", {
+      month: "short",
+      day: "2-digit",
+    });
+  };
+
   // =========================================
   // Format Time
   // =========================================
@@ -435,15 +518,46 @@ export default function ReportsPage() {
     );
   };
 
+  const monthlyAttendanceRows: MonthlyAttendanceRow[] = [];
+  const attendanceGroups = new Map<string, AttendanceRecord[]>();
+
+  attendanceReport?.attendances.forEach((record) => {
+    const key = `${record.studentId}-${record.classId}`;
+    const group = attendanceGroups.get(key) ?? [];
+    group.push(record);
+    attendanceGroups.set(key, group);
+  });
+
+  attendanceGroups.forEach((records, key) => {
+    const recordsByDate = new Map<string, AttendanceRecord>();
+    records
+      .sort((a, b) => a.attendanceDate.localeCompare(b.attendanceDate))
+      .forEach((record) => {
+        if (!recordsByDate.has(record.attendanceDate)) {
+          recordsByDate.set(record.attendanceDate, record);
+        }
+      });
+
+    const distinctRecords = Array.from(recordsByDate.values());
+    monthlyAttendanceRows.push({
+      key,
+      record: distinctRecords[0],
+      dates: distinctRecords.map((record) => record.attendanceDate),
+      times: distinctRecords.map((record) => record.checkInTime),
+      daysPresent: distinctRecords.length,
+    });
+  });
+
   // =========================================
   // Get Month Name
   // =========================================
-  const getMonthName = (monthNumber: number) => {
-    return (
-      months.find(
-        (item) => item.value === monthNumber
-      )?.name || monthNumber.toString()
-    );
+  const getMonthName = (monthNumber?: number) => {
+    if (!monthNumber || monthNumber < 1 || monthNumber > 12) {
+      return "Unknown month";
+    }
+
+    return months.find((item) => item.value === monthNumber)?.name ??
+      String(monthNumber);
   };
 
   return (
@@ -475,7 +589,7 @@ export default function ReportsPage() {
           month.
         </p>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
+        <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-700">
               Year
@@ -507,6 +621,7 @@ export default function ReportsPage() {
                 setMonth(e.target.value);
                 setAttendanceReport(null);
                 setPaymentReport(null);
+                setClassSummary(null);
               }}
               className="w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-900"
             >
@@ -516,6 +631,29 @@ export default function ReportsPage() {
                   value={item.value}
                 >
                   {item.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700">
+              Class
+            </label>
+
+            <select
+              value={selectedClassId}
+              onChange={(e) => {
+                setSelectedClassId(e.target.value);
+                setAttendanceReport(null);
+                setPaymentReport(null);
+              }}
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-900"
+            >
+              <option value="">All Classes</option>
+              {classes.map((classItem) => (
+                <option key={classItem.id} value={classItem.id}>
+                  {classItem.name}
                 </option>
               ))}
             </select>
@@ -550,7 +688,16 @@ export default function ReportsPage() {
       ========================================= */}
       {attendanceReport && paymentReport && (
         <>
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <SummaryCard
+              title="Students Enrolled by Month End"
+              value={String(
+                attendanceReport.totalStudents ??
+                  paymentReport.totalStudents ??
+                  0
+              )}
+            />
+
             <SummaryCard
               title="Total Attendance"
               value={attendanceReport.totalAttendance.toString()}
@@ -583,11 +730,11 @@ export default function ReportsPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[750px] text-left text-sm text-gray-700">
+              <table className="w-full min-w-[900px] text-left text-sm text-gray-700">
                 <thead className="bg-gray-50 text-sm font-semibold text-gray-700">
                   <tr>
                     <th className="px-6 py-4">
-                      Date
+                      Date Marked
                     </th>
 
                     <th className="px-6 py-4">
@@ -603,22 +750,25 @@ export default function ReportsPage() {
                     </th>
 
                     <th className="px-6 py-4">
-                      Check-In
+                      Days Present
+                    </th>
+
+                    <th className="px-6 py-4">
+                      Time Marked
                     </th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {attendanceReport.attendances
-                    .length > 0 ? (
-                    attendanceReport.attendances.map(
-                      (record) => (
+                  {monthlyAttendanceRows.length > 0 ? (
+                    monthlyAttendanceRows.map(
+                      ({ key, record, dates, times, daysPresent }) => (
                         <tr
-                          key={record.id}
+                          key={key}
                           className="border-t border-gray-100 text-gray-700 hover:bg-gray-50"
                         >
                           <td className="px-6 py-4">
-                            {record.attendanceDate}
+                            {dates.map(formatAttendanceDate).join(", ")}
                           </td>
 
                           <td className="px-6 py-4 font-medium text-gray-900">
@@ -634,9 +784,11 @@ export default function ReportsPage() {
                           </td>
 
                           <td className="px-6 py-4">
-                            {formatTime(
-                              record.checkInTime
-                            )}
+                            {daysPresent}
+                          </td>
+
+                          <td className="px-6 py-4">
+                            {times.map(formatTime).join(", ")}
                           </td>
                         </tr>
                       )
@@ -644,7 +796,7 @@ export default function ReportsPage() {
                   ) : (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="px-6 py-10 text-center text-gray-500"
                       >
                         No attendance records found.
@@ -889,7 +1041,7 @@ export default function ReportsPage() {
         </h2>
 
         <p className="mt-1 text-sm text-gray-500">
-          View yearly summary for a selected class.
+          View a monthly summary for a selected class.
         </p>
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
@@ -945,6 +1097,27 @@ export default function ReportsPage() {
             />
           </div>
 
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700">
+              Month
+            </label>
+
+            <select
+              value={month}
+              onChange={(e) => {
+                setMonth(e.target.value);
+                setClassSummary(null);
+              }}
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-900"
+            >
+              {months.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex items-end">
             <button
               type="button"
@@ -995,8 +1168,9 @@ export default function ReportsPage() {
                 </p>
 
                 <p>
-                  Academic Year:{" "}
+                  Report Month:{" "}
                   <strong>
+                    {getMonthName(classSummary.month ?? Number(month))}{" "}
                     {classSummary.year}
                   </strong>
                 </p>
@@ -1015,7 +1189,7 @@ export default function ReportsPage() {
               />
 
               <SummaryCard
-                title="Payments"
+                title="Payments This Month"
                 value={classSummary.totalPayments.toString()}
               />
 
