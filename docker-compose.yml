@@ -5,7 +5,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: zrio_admin
-      POSTGRES_PASSWORD: StrongPassword123
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: zriolabs_cms
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -16,24 +16,25 @@ services:
     ports:
       - "5000:8080"
     environment:
-      - ConnectionStrings__DefaultConnection=Host=postgres-db;Database=zriolabs_cms;Username=zrio_admin;Password=StrongPassword123
-      - Jwt__Key=YourSuperSecretAndVeryLongJwtKeyHere123456789!
+      - ConnectionStrings__DefaultConnection=Host=postgres-db;Database=zriolabs_cms;Username=zrio_admin;Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - Jwt__Key=${JWT_KEY:?JWT_KEY is required}
       - Jwt__Issuer=ZrioLabs
       - Jwt__Audience=ZrioLabsUsers
       - Jwt__ExpireMinutes=60
       - ASPNETCORE_ENVIRONMENT=Production
       - InitialAdmin__Username=admin
-      - InitialAdmin__Password=123456
+      - InitialAdmin__Password=${INITIAL_ADMIN_PASSWORD:?INITIAL_ADMIN_PASSWORD is required}
     depends_on:
       - postgres-db
 
   frontend-app:
-    build: ./class-management-system
+    build:
+      context: ./class-management-system
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
     restart: always
     ports:
       - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://150.230.137.23:5000
 
 volumes:
   postgres_data:
