@@ -23,12 +23,20 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts
+          cat >> ~/.ssh/config <<'EOF'
+          Host deployment-server
+            HostName ${{ secrets.SERVER_HOST }}
+            User ${{ secrets.SERVER_USER }}
+            ServerAliveInterval 30
+            ServerAliveCountMax 120
+            ConnectTimeout 30
+          EOF
 
       - name: Upload source and deployment configuration
         run: |
-          ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "mkdir -p '${{ secrets.DEPLOY_PATH }}'"
-          tar --exclude=.git -czf - . | ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "tar -xzf - -C '${{ secrets.DEPLOY_PATH }}'"
-          ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "cat > '${{ secrets.DEPLOY_PATH }}/.env'" <<'EOF'
+          ssh deployment-server "mkdir -p '${{ secrets.DEPLOY_PATH }}'"
+          tar --exclude=.git -czf - . | ssh deployment-server "tar -xzf - -C '${{ secrets.DEPLOY_PATH }}'"
+          ssh deployment-server "cat > '${{ secrets.DEPLOY_PATH }}/.env'" <<'EOF'
           POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
           JWT_KEY=${{ secrets.JWT_KEY }}
           INITIAL_ADMIN_PASSWORD=${{ secrets.INITIAL_ADMIN_PASSWORD }}
@@ -37,5 +45,5 @@ jobs:
 
       - name: Build and restart services
         run: |
-          ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+          ssh deployment-server \
             "cd '${{ secrets.DEPLOY_PATH }}' && docker compose build --pull && docker compose up -d --remove-orphans && docker compose ps"
