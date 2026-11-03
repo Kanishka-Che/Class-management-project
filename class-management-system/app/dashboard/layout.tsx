@@ -10,13 +10,26 @@ type User = {
   role: string;
 };
 
-const navigation = [
+const adminNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: "home" },
   { name: "Students", href: "/dashboard/students", icon: "users" },
   { name: "Classes", href: "/dashboard/classes", icon: "book" },
   { name: "Attendance", href: "/dashboard/attendance", icon: "calendar" },
   { name: "Payments", href: "/dashboard/payments", icon: "wallet" },
   { name: "Reports", href: "/dashboard/reports", icon: "chart" },
+];
+
+const staffNavigation = [
+  {
+    name: "Students",
+    href: "/dashboard/students",
+    icon: "users",
+  },
+  {
+    name: "Attendance",
+    href: "/dashboard/attendance",
+    icon: "calendar",
+  },
 ];
 
 function NavIcon({
@@ -160,6 +173,11 @@ export default function DashboardLayout({
     router.replace("/login");
   };
 
+  const navigation =
+  user?.role === "Staff"
+    ? staffNavigation
+    : adminNavigation;
+
   const isActive = (href: string) =>
     href === "/dashboard"
       ? pathname === "/dashboard"
@@ -294,17 +312,22 @@ export default function DashboardLayout({
 
           <div className="hidden items-center gap-2 md:flex">
 
+  {user?.role === "Admin" && (
   <Link
     href="/dashboard/settings"
     className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-  pathname.startsWith("/dashboard/settings")
-    ? "bg-blue-50 text-blue-600"
-    : "text-blue-500 hover:bg-blue-50 hover:text-blue-700"
-}`}
+      pathname.startsWith("/dashboard/settings")
+        ? "bg-blue-50 text-blue-600"
+        : "text-blue-500 hover:bg-blue-50 hover:text-blue-700"
+    }`}
   >
-    <NavIcon name="settings" className="h-4 w-4" />
+    <NavIcon
+      name="settings"
+      className="h-4 w-4"
+    />
     Settings
   </Link>
+)}
 
   {user?.role === "Admin" && (
     <Link
@@ -343,7 +366,7 @@ export default function DashboardLayout({
           aria-label="Mobile navigation"
           className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.06)] md:hidden"
         >
-          <div className="grid grid-cols-5 items-end gap-1 px-2 py-2">
+          {/* <div className="grid grid-cols-5 items-end gap-1 px-2 py-2">
             {[
               navigation[0],
               navigation[1],
@@ -374,7 +397,77 @@ export default function DashboardLayout({
               <NavIcon name="menu" className="h-6 w-6" />
               Menu
             </button>
-          </div>
+          </div> */}
+        <div
+  className={`grid items-end gap-1 px-2 py-2 ${
+    user?.role === "Staff"
+      ? "grid-cols-4"
+      : "grid-cols-5"
+  }`}
+>
+  {(
+    user?.role === "Staff"
+      ? [
+          {
+            name: "Add",
+            href: "/dashboard/students/add",
+            icon: "users",
+          },
+          {
+            name: "Attendance",
+            href: "/dashboard/attendance",
+            icon: "calendar",
+          },
+          {
+            name: "Scan",
+            href: "/dashboard/attendance/qr",
+            icon: "scan",
+          },
+        ]
+      : [
+          adminNavigation[0],
+          adminNavigation[1],
+          {
+            name: "Scan",
+            href: "/dashboard/attendance/qr",
+            icon: "scan",
+          },
+          adminNavigation[3],
+        ]
+  ).map((item) => (
+    <Link
+      key={item.href}
+      href={item.href}
+      className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium ${
+        item.name === "Scan"
+          ? "bg-blue-600 text-white"
+          : isActive(item.href)
+            ? "text-blue-600"
+            : "text-slate-500"
+      }`}
+    >
+      <NavIcon
+        name={item.icon}
+        className="h-6 w-6"
+      />
+
+      {item.name}
+    </Link>
+  ))}
+
+  <button
+    type="button"
+    onClick={() => setMobileMenuOpen(true)}
+    className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium text-slate-500"
+  >
+    <NavIcon
+      name="menu"
+      className="h-6 w-6"
+    />
+    Menu
+  </button>
+</div>
+
         </nav>
 
         {/* Mobile menu */}
@@ -409,26 +502,33 @@ export default function DashboardLayout({
               </div>
               
 <nav className="grid grid-cols-2 gap-2">
-  {[
-    ...navigation,
-    { name: "Settings", href: "/dashboard/settings", icon: "settings" },
-  ].map((item) => (
-    <Link
-      key={item.href}
-      href={item.href}
-      onClick={() => setMobileMenuOpen(false)}
-      className={`flex items-center gap-2 rounded-xl p-4 text-sm font-semibold ${
-        isActive(item.href)
-          ? "bg-blue-600 text-white"
-          : "bg-slate-100 text-slate-800"
-      }`}
-    >
-      <NavIcon name={item.icon} />
-      {item.name}
-    </Link>
-  ))}
+ {[
+  ...navigation,
+  ...(user?.role === "Admin"
+    ? [
+        {
+          name: "Settings",
+          href: "/dashboard/settings",
+          icon: "settings",
+        },
+      ]
+    : []),
+].map((item) => (
+  <Link
+    key={item.href}
+    href={item.href}
+    onClick={() => setMobileMenuOpen(false)}
+    className={`flex items-center gap-2 rounded-xl p-4 text-sm font-semibold ${
+      isActive(item.href)
+        ? "bg-blue-600 text-white"
+        : "bg-slate-100 text-slate-800"
+    }`}
+  >
+    <NavIcon name={item.icon} />
+    {item.name}
+  </Link>
+))}
 </nav>
-`
 
 
               {user?.role === "Admin" && (

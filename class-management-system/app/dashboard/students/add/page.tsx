@@ -37,30 +37,46 @@ export default function AddStudentPage() {
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isStaff, setIsStaff] = useState(false);
 
   // =========================================
   // Load active classes
   // =========================================
-  useEffect(() => {
-    const loadClasses = async () => {
-      try {
-        setLoadingClasses(true);
+ useEffect(() => {
+  const loadPage = async () => {
+    try {
+      setLoadingClasses(true);
 
-        const response = await api.get<ClassItem[]>(
-          "/api/classes"
-        );
+      // Check logged-in user role
+      const storedUser = sessionStorage.getItem("user");
 
-        setClasses(response.data);
-      } catch (error) {
-        console.error("Load Classes Error:", error);
-        setError("Failed to load classes.");
-      } finally {
-        setLoadingClasses(false);
+      if (storedUser) {
+        try {
+          const user = JSON.parse(storedUser);
+          setIsStaff(user.role === "Staff");
+        } catch {
+          setIsStaff(false);
+        }
       }
-    };
 
-    loadClasses();
-  }, []);
+      // Backend automatically returns:
+      // Admin -> all active classes
+      // Staff -> assigned active classes only
+      const response = await api.get<ClassItem[]>(
+        "/api/classes"
+      );
+
+      setClasses(response.data);
+    } catch (error) {
+      console.error("Load Classes Error:", error);
+      setError("Failed to load classes.");
+    } finally {
+      setLoadingClasses(false);
+    }
+  };
+
+  loadPage();
+}, []);
 
   // =========================================
   // Handle form changes
@@ -145,7 +161,11 @@ export default function AddStudentPage() {
         academicYear,
       });
 
-      router.push("/dashboard/students");
+      if (isStaff) {
+  router.push("/dashboard/attendance");
+} else {
+  router.push("/dashboard/students");
+}
     } catch (error: any) {
       console.error(
         "Create Student With Enrollment Error:",

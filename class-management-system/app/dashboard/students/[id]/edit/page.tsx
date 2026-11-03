@@ -69,7 +69,7 @@ export default function EditStudentPage() {
   // =========================================
   // User
   // =========================================
-  const [isAdmin, setIsAdmin] = useState(false);
+  // const [isAdmin, setIsAdmin] = useState(false);
 
   // =========================================
   // General State
@@ -131,17 +131,20 @@ export default function EditStudentPage() {
         // -------------------------------------
         // Logged-in User
         // -------------------------------------
-        const storedUser = sessionStorage.getItem("user");
+       const storedUser = sessionStorage.getItem("user");
 
-        if (storedUser) {
-          try {
-            const user: User = JSON.parse(storedUser);
+let adminUser = false;
 
-            setIsAdmin(user.role === "Admin");
-          } catch (error) {
-            console.error("Failed to read user:", error);
-          }
-        }
+// if (storedUser) {
+//   try {
+//     const user: User = JSON.parse(storedUser);
+
+//     adminUser = user.role === "Admin";
+//     setIsAdmin(adminUser);
+//   } catch (error) {
+//     console.error("Failed to read user:", error);
+//   }
+// }
 
         // -------------------------------------
         // Student + Classes
@@ -186,7 +189,10 @@ export default function EditStudentPage() {
         // -------------------------------------
         // Load Current Year Enrollment
         // -------------------------------------
-        await loadEnrollment(params.id as string, currentYear);
+     await loadEnrollment(
+  params.id as string,
+  currentYear
+);
       } catch (error) {
         console.error("Load Student Error:", error);
 
@@ -265,14 +271,11 @@ export default function EditStudentPage() {
       return;
     }
 
-    // -----------------------------------------
-    // Admin must select a class
-    // -----------------------------------------
-    if (isAdmin && !selectedClassId) {
-      setError(`Please select a class for ${academicYear}.`);
-
-      return;
-    }
+    // Admin and Staff must select a class
+if (!selectedClassId) {
+  setError(`Please select a class for ${academicYear}.`);
+  return;
+}
 
     try {
       setSaving(true);
@@ -302,10 +305,8 @@ export default function EditStudentPage() {
         joinedDate: form.joinedDate || null,
       });
 
-      // =====================================
-      // 2. Enrollment - Admin Only
-      // =====================================
-      if (isAdmin && selectedClassId) {
+     // 2. Enrollment - Admin and Staff
+if (selectedClassId) {
         // -----------------------------------
         // Existing Enrollment
         // -----------------------------------
@@ -536,14 +537,13 @@ export default function EditStudentPage() {
           {/* Class */}
           <div>
             <label className="mb-2 block text-sm font-semibold text-gray-900">
-              Class
-              {isAdmin ? " *" : ""}
+              Class *
             </label>
 
             <select
               value={selectedClassId}
               onChange={(e) => setSelectedClassId(e.target.value)}
-              disabled={!isAdmin || loadingEnrollment || saving}
+              disabled={loadingEnrollment || saving}
               className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-medium text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-gray-100"
             >
               <option value="">
@@ -562,58 +562,50 @@ export default function EditStudentPage() {
         </div>
 
         {/* ===================================
-            Enrollment Status
-            =================================== */}
-        {!loadingEnrollment && (
-          <div className="mt-5">
-            {enrollment ? (
-              <div className="rounded-xl border border-green-200 bg-green-50 p-5">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-bold text-green-800">
-                    Enrolled
-                  </span>
+    Enrollment Status
+    =================================== */}
+{!loadingEnrollment && (
+  <div className="mt-5">
+    {enrollment ? (
+      <div className="rounded-xl border border-green-200 bg-green-50 p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-bold text-green-800">
+            Enrolled
+          </span>
 
-                  <span className="font-semibold text-gray-950">
-                    {enrollment.className}
-                  </span>
-                </div>
+          <span className="font-semibold text-gray-950">
+            {enrollment.className}
+          </span>
+        </div>
 
-                <p className="mt-2 text-sm text-gray-700">
-                  Current enrollment for{" "}
-                  <strong>{enrollment.academicYear}</strong>
-                </p>
+        <p className="mt-2 text-sm text-gray-700">
+          Current enrollment for{" "}
+          <strong>{enrollment.academicYear}</strong>
+        </p>
 
-                {isAdmin && (
-                  <p className="mt-2 text-sm text-gray-600">
-                    Select another class above and click Update Student to
-                    change the class.
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
-                <p className="font-semibold text-amber-900">Not Enrolled</p>
+        <p className="mt-2 text-sm text-gray-600">
+          Select another accessible class above and click Update Student
+          to change the class.
+        </p>
+      </div>
+    ) : (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+        <p className="font-semibold text-amber-900">
+          Not Enrolled
+        </p>
 
-                <p className="mt-1 text-sm text-amber-800">
-                  No class enrollment found for {academicYear}.
-                </p>
+        <p className="mt-1 text-sm text-amber-800">
+          No class enrollment found for {academicYear}.
+        </p>
 
-                {isAdmin && (
-                  <p className="mt-2 text-sm text-amber-800">
-                    Select a class above and click Update Student to enroll this
-                    student.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {!isAdmin && (
-          <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-            Class enrollment can only be changed by an Admin.
-          </div>
-        )}
+        <p className="mt-2 text-sm text-amber-800">
+          Select an accessible class above and click Update Student
+          to enroll this student.
+        </p>
+      </div>
+    )}
+  </div>
+)}
 
         {/* ===================================
             Buttons

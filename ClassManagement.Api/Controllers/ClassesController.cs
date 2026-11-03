@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using ClassManagement.Api.DTOs;
+using System.Security.Claims;
 
 namespace ClassManagement.Api.Controllers
 {
@@ -24,26 +25,66 @@ namespace ClassManagement.Api.Controllers
         // Admin + Staff
         // =========================================
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<ClassResponse>>> GetClasses()
-        {
-            var classes = await _context.Classes
-                .Where(c => c.IsActive)
-                .OrderBy(c => c.Name)
-                .Select(c => new ClassResponse
-                {
-                    Id = c.Id,
-                    Name = c.Name,
-                    Subject = c.Subject,
-                    TeacherName = c.TeacherName,
-                    MonthlyFee = c.MonthlyFee,
-                    Day = c.Day,
-                    StartTime = c.StartTime,
-                    IsActive = c.IsActive
-                })
-                .ToListAsync();
+public async Task<ActionResult<IEnumerable<ClassResponse>>> GetClasses()
+{
+    var role = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            return Ok(classes);
-        }
+    // =========================================
+    // Admin -> All active classes
+    // =========================================
+    if (role == "Admin")
+    {
+        var adminClasses = await _context.Classes
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.Name)
+            .Select(c => new ClassResponse
+            {
+                Id = c.Id,
+                Name = c.Name,
+                Subject = c.Subject,
+                TeacherName = c.TeacherName,
+                MonthlyFee = c.MonthlyFee,
+                Day = c.Day,
+                StartTime = c.StartTime,
+                IsActive = c.IsActive
+            })
+            .ToListAsync();
+
+        return Ok(adminClasses);
+    }
+
+    // =========================================
+    // Staff -> Assigned classes only
+    // =========================================
+    var userIdClaim =
+        User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+    if (!int.TryParse(userIdClaim, out var userId))
+    {
+        return Unauthorized("Invalid user.");
+    }
+
+    var staffClasses = await _context.UserClasses
+        .Where(uc =>
+            uc.UserId == userId &&
+            uc.Class != null &&
+            uc.Class.IsActive)
+        .OrderBy(uc => uc.Class!.Name)
+        .Select(uc => new ClassResponse
+        {
+            Id = uc.ClassId,
+            Name = uc.Class!.Name,
+            Subject = uc.Class.Subject,
+            TeacherName = uc.Class.TeacherName,
+            MonthlyFee = uc.Class.MonthlyFee,
+            Day = uc.Class.Day,
+            StartTime = uc.Class.StartTime,
+            IsActive = uc.Class.IsActive
+        })
+        .ToListAsync();
+
+    return Ok(staffClasses);
+}
 
         // =========================================
         // GET: api/classes/inactive
@@ -79,30 +120,56 @@ namespace ClassManagement.Api.Controllers
         // Admin + Staff
         // =========================================
         [HttpGet("{id}")]
-        public async Task<ActionResult<ClassResponse>> GetClassById(int id)
+public async Task<ActionResult<ClassResponse>> GetClassById(int id)
+{
+    var role = User.FindFirst(ClaimTypes.Role)?.Value;
+
+    if (role == "Staff")
+    {
+        var userIdClaim =
+            User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (!int.TryParse(userIdClaim, out var userId))
         {
-            var classItem = await _context.Classes
-                .Where(c => c.Id == id)
-                .Select(c => new ClassResponse
-                {
-                    Id = c.Id,
-                    Name = c.Name,
-                    Subject = c.Subject,
-                    TeacherName = c.TeacherName,
-                    MonthlyFee = c.MonthlyFee,
-                    Day = c.Day,
-                    StartTime = c.StartTime,
-                    IsActive = c.IsActive
-                })
-                .FirstOrDefaultAsync();
-
-            if (classItem == null)
-            {
-                return NotFound("Class not found.");
-            }
-
-            return Ok(classItem);
+            return Unauthorized("Invalid user.");
         }
+
+        var hasAccess = await _context.UserClasses
+            .AnyAsync(uc =>
+                uc.UserId == userId &&
+                uc.ClassId == id);
+
+        if (!hasAccess)
+        {
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                "You do not have access to this class."
+            );
+        }
+    }
+
+    var classItem = await _context.Classes
+        .Where(c => c.Id == id)
+        .Select(c => new ClassResponse
+        {
+            Id = c.Id,
+            Name = c.Name,
+            Subject = c.Subject,
+            TeacherName = c.TeacherName,
+            MonthlyFee = c.MonthlyFee,
+            Day = c.Day,
+            StartTime = c.StartTime,
+            IsActive = c.IsActive
+        })
+        .FirstOrDefaultAsync();
+
+    if (classItem == null)
+    {
+        return NotFound("Class not found.");
+    }
+
+    return Ok(classItem);
+}
 
         // =========================================
         // POST: api/classes

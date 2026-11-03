@@ -26,74 +26,144 @@ namespace ClassManagement.Api.Controllers
             _configuration = configuration;
         }
 
-        // =========================================
-        // POST: api/auth/register
-        // =========================================
-        //[Authorize(Roles = "Admin")]
-        [HttpPost("register")]
-        public async Task<IActionResult> Register(
-            RegisterRequest request)
+       // =========================================
+// POST: api/auth/register
+// Admin creates Admin / Staff accounts
+// =========================================
+[Authorize(Roles = "Admin")]
+[HttpPost("register")]
+public async Task<IActionResult> Register(
+    RegisterRequest request)
+{
+    if (string.IsNullOrWhiteSpace(request.Username))
+    {
+        return BadRequest("Username is required.");
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Password))
+    {
+        return BadRequest("Password is required.");
+    }
+
+    if (request.Password.Length < 6)
+    {
+        return BadRequest(
+            "Password must be at least 6 characters."
+        );
+    }
+
+    if (request.Role != "Admin" &&
+        request.Role != "Staff")
+    {
+        return BadRequest(
+            "Role must be Admin or Staff."
+        );
+    }
+
+    var username = request.Username.Trim();
+
+    var usernameExists = await _context.Users
+        .AnyAsync(u => u.Username == username);
+
+    if (usernameExists)
+    {
+        return BadRequest("Username already exists.");
+    }
+
+    // -----------------------------------------
+    // Validate selected classes for Staff
+    // -----------------------------------------
+
+    var classIds = request.ClassIds
+        .Distinct()
+        .ToList();
+
+    if (request.Role == "Staff" &&
+    classIds.Count == 0)
+{
+    return BadRequest(
+        "Please select at least one class for Staff."
+    );
+}
+
+    if (request.Role == "Staff" &&
+        classIds.Count > 0)
+    {
+        var validClassIds = await _context.Classes
+            .Where(c =>
+                classIds.Contains(c.Id) &&
+                c.IsActive
+            )
+            .Select(c => c.Id)
+            .ToListAsync();
+
+        if (validClassIds.Count != classIds.Count)
         {
-            if (string.IsNullOrWhiteSpace(request.Username))
-            {
-                return BadRequest("Username is required.");
-            }
-
-            if (string.IsNullOrWhiteSpace(request.Password))
-            {
-                return BadRequest("Password is required.");
-            }
-
-            if (request.Password.Length < 6)
-            {
-                return BadRequest(
-                    "Password must be at least 6 characters."
-                );
-            }
-
-            if (request.Role != "Admin" &&
-                request.Role != "Staff")
-            {
-                return BadRequest(
-                    "Role must be Admin or Staff."
-                );
-            }
-
-            var usernameExists = await _context.Users
-                .AnyAsync(u => u.Username == request.Username);
-
-            if (usernameExists)
-            {
-                return BadRequest("Username already exists.");
-            }
-
-            var user = new User
-            {
-                Username = request.Username,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(
-                    request.Password
-                ),
-                Role = request.Role,
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
-
-            return Ok(new
-            {
-                message = "User registered successfully.",
-                user = new
-                {
-                    user.Id,
-                    user.Username,
-                    user.Role,
-                    user.IsActive
-                }
-            });
+            return BadRequest(
+                "One or more selected classes are invalid or inactive."
+            );
         }
+    }
+
+    var user = new User
+    {
+        Username = username,
+
+        PasswordHash =
+            BCrypt.Net.BCrypt.HashPassword(
+                request.Password
+            ),
+
+        Role = request.Role,
+
+        IsActive = true,
+
+        CreatedAt = DateTime.UtcNow,
+
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    _context.Users.Add(user);
+
+    await _context.SaveChangesAsync();
+
+    // -----------------------------------------
+    // Assign classes only for Staff
+    // -----------------------------------------
+
+    if (user.Role == "Staff")
+    {
+        foreach (var classId in classIds)
+        {
+            _context.UserClasses.Add(
+                new UserClass
+                {
+                    UserId = user.Id,
+                    ClassId = classId
+                }
+            );
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    return Ok(new
+    {
+        message = "User registered successfully.",
+
+        user = new
+        {
+            user.Id,
+            user.Username,
+            user.Role,
+            user.IsActive,
+
+            classIds = user.Role == "Staff"
+                ? classIds
+                : new List<int>()
+        }
+    });
+}
 
 // =========================================
 // POST: api/auth/login

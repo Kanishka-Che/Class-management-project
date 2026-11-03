@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using ClassManagement.Api.Helpers;
 using ClassManagement.Api.DTOs;
+using System.Security.Claims;
 
 namespace ClassManagement.Api.Controllers
 {
@@ -20,6 +21,29 @@ namespace ClassManagement.Api.Controllers
             _context = context;
         }
 
+        private async Task<bool> CanAccessClass(int classId)
+{
+    var role = User.FindFirst(ClaimTypes.Role)?.Value;
+
+    if (role == "Admin")
+    {
+        return true;
+    }
+
+    var userIdClaim =
+        User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+    if (!int.TryParse(userIdClaim, out var userId))
+    {
+        return false;
+    }
+
+    return await _context.UserClasses
+        .AnyAsync(uc =>
+            uc.UserId == userId &&
+            uc.ClassId == classId);
+}
+
         // =========================================
         // POST: api/attendance
         // Mark attendance manually
@@ -28,6 +52,14 @@ namespace ClassManagement.Api.Controllers
 public async Task<IActionResult> MarkAttendance(
     CreateAttendanceRequest request)
 {
+    if (!await CanAccessClass(request.ClassId))
+{
+    return StatusCode(
+        StatusCodes.Status403Forbidden,
+        "You do not have access to this class."
+    );
+}
+
     // Check student
     var student = await _context.Students
         .FindAsync(request.StudentId);
@@ -126,6 +158,15 @@ public async Task<IActionResult> MarkAttendance(
 public async Task<IActionResult> MarkAttendanceByQr(
     QrAttendanceRequest request)
 {
+
+    if (!await CanAccessClass(request.ClassId))
+{
+    return StatusCode(
+        StatusCodes.Status403Forbidden,
+        "You do not have access to this class."
+    );
+}
+
     if (string.IsNullOrWhiteSpace(request.QrToken))
     {
         return BadRequest("QR token is required.");
@@ -331,6 +372,16 @@ public async Task<IActionResult> MarkAttendanceByQr(
             int classId,
             DateOnly date)
         {
+
+
+if (!await CanAccessClass(classId))
+{
+    return StatusCode(
+        StatusCodes.Status403Forbidden,
+        "You do not have access to this class."
+    );
+}
+
             var classItem = await _context.Classes.FindAsync(classId);
 
             if (classItem == null)
@@ -368,40 +419,112 @@ public async Task<IActionResult> MarkAttendanceByQr(
         // GET: api/attendance/student/{studentId}
         // Get student's attendance history
         // =========================================
-        [HttpGet("student/{studentId}")]
-        public async Task<IActionResult> GetStudentAttendanceHistory(
-            int studentId)
-        {
-            var student = await _context.Students.FindAsync(studentId);
+       [HttpGet("student/{studentId}")]
+public async Task<IActionResult> GetStudentAttendanceHistory(
+    int studentId)
+{
+    var student = await _context.Students
+        .FindAsync(studentId);
 
-            if (student == null)
-            {
-                return NotFound("Student not found.");
-            }
-
-            var attendances = await _context.Attendances
-    .Where(a => a.StudentId == studentId)
-    .OrderByDescending(a => a.AttendanceDate)
-    .ThenByDescending(a => a.CheckInTime)
-    .Select(a => new AttendanceResponse
+    if (student == null)
     {
-        Id = a.Id,
+        return NotFound("Student not found.");
+    }
 
-        StudentId = a.StudentId,
-        StudentCode = a.Student!.StudentCode,
-        StudentName =
-            (a.Student.FirstName + " " +
-             (a.Student.LastName ?? "")).Trim(),
+    var role = User.FindFirst(ClaimTypes.Role)?.Value;
 
-        ClassId = a.ClassId,
-        ClassName = a.Class!.Name,
+    // =========================================
+    // ADMIN -> Full attendance history
+    // =========================================
+    if (role == "Admin")
+    {
+        var adminAttendances = await _context.Attendances
+            .Where(a => a.StudentId == studentId)
+            .OrderByDescending(a => a.AttendanceDate)
+            .ThenByDescending(a => a.CheckInTime)
+            .Select(a => new AttendanceResponse
+            {
+                Id = a.Id,
 
-        AttendanceDate = a.AttendanceDate,
-        CheckInTime = a.CheckInTime
-    })
-    .ToListAsync();
+                StudentId = a.StudentId,
+                StudentCode = a.Student!.StudentCode,
+                StudentName =
+                    (a.Student.FirstName + " " +
+                     (a.Student.LastName ?? "")).Trim(),
 
-            return Ok(attendances);
-        }
+                ClassId = a.ClassId,
+                ClassName = a.Class!.Name,
+
+                AttendanceDate = a.AttendanceDate,
+                CheckInTime = a.CheckInTime
+            })
+            .ToListAsync();
+
+        return Ok(adminAttendances);
+    }
+
+    // =========================================
+    // STAFF
+    // =========================================
+    var userIdClaim =
+        User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+    if (!int.TryParse(userIdClaim, out var userId))
+    {
+        return Unauthorized("Invalid user.");
+    }
+
+    // Student must belong to at least one
+    // class assigned to this Staff user.
+    var hasStudentAccess = await _context.Enrollments
+        .AnyAsync(e =>
+            e.StudentId == studentId &&
+            e.IsActive &&
+            _context.UserClasses.Any(uc =>
+                uc.UserId == userId &&
+                uc.ClassId == e.ClassId
+            )
+        );
+
+    if (!hasStudentAccess)
+    {
+        return StatusCode(
+            StatusCodes.Status403Forbidden,
+            "You do not have access to this student."
+        );
+    }
+
+    // Return attendance only from classes
+    // assigned to this Staff user.
+    var staffAttendances = await _context.Attendances
+        .Where(a =>
+            a.StudentId == studentId &&
+            _context.UserClasses.Any(uc =>
+                uc.UserId == userId &&
+                uc.ClassId == a.ClassId
+            )
+        )
+        .OrderByDescending(a => a.AttendanceDate)
+        .ThenByDescending(a => a.CheckInTime)
+        .Select(a => new AttendanceResponse
+        {
+            Id = a.Id,
+
+            StudentId = a.StudentId,
+            StudentCode = a.Student!.StudentCode,
+            StudentName =
+                (a.Student.FirstName + " " +
+                 (a.Student.LastName ?? "")).Trim(),
+
+            ClassId = a.ClassId,
+            ClassName = a.Class!.Name,
+
+            AttendanceDate = a.AttendanceDate,
+            CheckInTime = a.CheckInTime
+        })
+        .ToListAsync();
+
+    return Ok(staffAttendances);
+}
     }
 }

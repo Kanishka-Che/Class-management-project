@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using ClassManagement.Api.DTOs;
+using System.Security.Claims;
 
 namespace ClassManagement.Api.Controllers
 {
@@ -19,38 +20,147 @@ namespace ClassManagement.Api.Controllers
             _context = context;
         }
 
-        // =========================================
-        // GET: api/students
-        // Get all active students
-        // =========================================
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<StudentResponse>>> GetStudents()
+        private async Task<bool> CanAccessClass(int classId)
         {
-            var students = await _context.Students
-                .Where(s => s.IsActive)
-                .OrderBy(s => s.StudentCode)
-                .Select(s => new StudentResponse
-                {
-                    Id = s.Id,
-                    StudentCode = s.StudentCode,
-                    FirstName = s.FirstName,
-                    LastName = s.LastName,
-                    DateOfBirth = s.DateOfBirth,
-                    Gender = s.Gender,
-                    Phone = s.Phone,
-                    ParentName = s.ParentName,
-                    ParentPhone = s.ParentPhone,
-                    Address = s.Address,
-                    School = s.School,
-                    QrToken = s.QrToken,
-                    IsActive = s.IsActive,
-                    CreatedAt = s.CreatedAt,
-                    UpdatedAt = s.UpdatedAt
-                })
-                .ToListAsync();
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            return Ok(students);
+            // Admin can access every class
+            if (role == "Admin")
+            {
+                return true;
+            }
+
+            // Get logged-in Staff user ID from JWT
+            var userIdClaim =
+                User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (!int.TryParse(userIdClaim, out var userId))
+            {
+                return false;
+            }
+
+            // Staff can access assigned classes only
+            return await _context.UserClasses
+                .AnyAsync(uc =>
+                    uc.UserId == userId &&
+                    uc.ClassId == classId);
         }
+
+        private async Task<bool> CanAccessStudent(int studentId)
+{
+    var role = User.FindFirst(ClaimTypes.Role)?.Value;
+
+    if (role == "Admin")
+    {
+        return true;
+    }
+
+    var userIdClaim =
+        User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+    if (!int.TryParse(userIdClaim, out var userId))
+    {
+        return false;
+    }
+
+    return await _context.Enrollments
+        .AnyAsync(e =>
+            e.StudentId == studentId &&
+            e.IsActive &&
+            _context.UserClasses.Any(uc =>
+                uc.UserId == userId &&
+                uc.ClassId == e.ClassId
+            )
+        );
+}
+
+       // =========================================
+// GET: api/students
+// Admin -> all active students
+// Staff -> students in assigned classes only
+// =========================================
+[HttpGet]
+public async Task<ActionResult<IEnumerable<StudentResponse>>> GetStudents()
+{
+    var role = User.FindFirst(ClaimTypes.Role)?.Value;
+
+    // =========================================
+    // ADMIN
+    // =========================================
+    if (role == "Admin")
+    {
+        var adminStudents = await _context.Students
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.StudentCode)
+            .Select(s => new StudentResponse
+            {
+                Id = s.Id,
+                StudentCode = s.StudentCode,
+                FirstName = s.FirstName,
+                LastName = s.LastName,
+                DateOfBirth = s.DateOfBirth,
+                Gender = s.Gender,
+                Phone = s.Phone,
+                ParentName = s.ParentName,
+                ParentPhone = s.ParentPhone,
+                Address = s.Address,
+                School = s.School,
+                QrToken = s.QrToken,
+                IsActive = s.IsActive,
+                CreatedAt = s.CreatedAt,
+                UpdatedAt = s.UpdatedAt
+            })
+            .ToListAsync();
+
+        return Ok(adminStudents);
+    }
+
+    // =========================================
+    // STAFF
+    // =========================================
+    var userIdClaim =
+        User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+    if (!int.TryParse(userIdClaim, out var userId))
+    {
+        return Unauthorized("Invalid user.");
+    }
+
+    var staffStudents = await _context.Enrollments
+        .Where(e =>
+            e.IsActive &&
+            e.Student != null &&
+            e.Student.IsActive &&
+            _context.UserClasses.Any(uc =>
+                uc.UserId == userId &&
+                uc.ClassId == e.ClassId
+            )
+        )
+        .Select(e => e.Student!)
+        .Distinct()
+        .OrderBy(s => s.StudentCode)
+        .Select(s => new StudentResponse
+        {
+            Id = s.Id,
+            StudentCode = s.StudentCode,
+            FirstName = s.FirstName,
+            LastName = s.LastName,
+            DateOfBirth = s.DateOfBirth,
+            Gender = s.Gender,
+            Phone = s.Phone,
+            ParentName = s.ParentName,
+            ParentPhone = s.ParentPhone,
+            Address = s.Address,
+            School = s.School,
+            QrToken = s.QrToken,
+            IsActive = s.IsActive,
+            CreatedAt = s.CreatedAt,
+            UpdatedAt = s.UpdatedAt
+        })
+        .ToListAsync();
+
+    return Ok(staffStudents);
+}
 
         // =========================================
         // GET: api/students/inactive
@@ -91,131 +201,187 @@ namespace ClassManagement.Api.Controllers
         // GET: api/students/{id}
         // Get student by ID
         // =========================================
-        [HttpGet("{id}")]
-        public async Task<ActionResult<StudentResponse>> GetStudent(int id)
+       [HttpGet("{id}")]
+public async Task<ActionResult<StudentResponse>> GetStudent(int id)
+{
+    var role = User.FindFirst(ClaimTypes.Role)?.Value;
+
+    // Staff can only view students from assigned classes
+    if (role != "Admin")
+    {
+        var userIdClaim =
+            User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (!int.TryParse(userIdClaim, out var userId))
         {
-            var student = await _context.Students
-                .Where(s => s.Id == id)
-                .Select(s => new StudentResponse
-                {
-                    Id = s.Id,
-                    StudentCode = s.StudentCode,
-                    FirstName = s.FirstName,
-                    LastName = s.LastName,
-                    DateOfBirth = s.DateOfBirth,
-                    Gender = s.Gender,
-                    Phone = s.Phone,
-                    ParentName = s.ParentName,
-                    ParentPhone = s.ParentPhone,
-                    Address = s.Address,
-                    School = s.School,
-                    QrToken = s.QrToken,
-                    IsActive = s.IsActive,
-                    CreatedAt = s.CreatedAt,
-                    UpdatedAt = s.UpdatedAt,
-                    JoinedDate = _context.Enrollments
-                        .Where(e => e.StudentId == s.Id)
-                        .OrderByDescending(e => e.AcademicYear)
-                        .Select(e => (DateOnly?)DateOnly.FromDateTime(e.JoinedDate))
-                        .FirstOrDefault()
-                })
-                .FirstOrDefaultAsync();
-
-            if (student == null)
-            {
-                return NotFound("Student not found.");
-            }
-
-            return Ok(student);
+            return Unauthorized("Invalid user.");
         }
+
+        var hasAccess = await _context.Enrollments
+            .AnyAsync(e =>
+                e.StudentId == id &&
+                e.IsActive &&
+                _context.UserClasses.Any(uc =>
+                    uc.UserId == userId &&
+                    uc.ClassId == e.ClassId
+                )
+            );
+
+        if (!hasAccess)
+        {
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                "You do not have access to this student."
+            );
+        }
+    }
+
+    var student = await _context.Students
+        .Where(s => s.Id == id)
+        .Select(s => new StudentResponse
+        {
+            Id = s.Id,
+            StudentCode = s.StudentCode,
+            FirstName = s.FirstName,
+            LastName = s.LastName,
+            DateOfBirth = s.DateOfBirth,
+            Gender = s.Gender,
+            Phone = s.Phone,
+            ParentName = s.ParentName,
+            ParentPhone = s.ParentPhone,
+            Address = s.Address,
+            School = s.School,
+            QrToken = s.QrToken,
+            IsActive = s.IsActive,
+            CreatedAt = s.CreatedAt,
+            UpdatedAt = s.UpdatedAt,
+
+            JoinedDate = _context.Enrollments
+                .Where(e => e.StudentId == s.Id)
+                .OrderByDescending(e => e.AcademicYear)
+                .Select(e =>
+                    (DateOnly?)DateOnly.FromDateTime(
+                        e.JoinedDate
+                    )
+                )
+                .FirstOrDefault()
+        })
+        .FirstOrDefaultAsync();
+
+    if (student == null)
+    {
+        return NotFound("Student not found.");
+    }
+
+    return Ok(student);
+}
 
         // =========================================
         // GET: api/students/code/{studentCode}
         // Search student using student code
         // =========================================
         [HttpGet("code/{studentCode}")]
-        public async Task<ActionResult<StudentResponse>> GetStudentByCode(
-            string studentCode)
+public async Task<ActionResult<StudentResponse>> GetStudentByCode(
+    string studentCode)
+{
+    var student = await _context.Students
+        .Where(s =>
+            s.StudentCode == studentCode &&
+            s.IsActive)
+        .Select(s => new StudentResponse
         {
-            var student = await _context.Students
-                .Where(s =>
-                    s.StudentCode == studentCode &&
-                    s.IsActive)
-                .Select(s => new StudentResponse
-                {
-                    Id = s.Id,
-                    StudentCode = s.StudentCode,
-                    FirstName = s.FirstName,
-                    LastName = s.LastName,
-                    DateOfBirth = s.DateOfBirth,
-                    Gender = s.Gender,
-                    Phone = s.Phone,
-                    ParentName = s.ParentName,
-                    ParentPhone = s.ParentPhone,
-                    Address = s.Address,
-                    School = s.School,
-                    QrToken = s.QrToken,
-                    IsActive = s.IsActive,
-                    CreatedAt = s.CreatedAt,
-                    UpdatedAt = s.UpdatedAt
-                })
-                .FirstOrDefaultAsync();
+            Id = s.Id,
+            StudentCode = s.StudentCode,
+            FirstName = s.FirstName,
+            LastName = s.LastName,
+            DateOfBirth = s.DateOfBirth,
+            Gender = s.Gender,
+            Phone = s.Phone,
+            ParentName = s.ParentName,
+            ParentPhone = s.ParentPhone,
+            Address = s.Address,
+            School = s.School,
+            QrToken = s.QrToken,
+            IsActive = s.IsActive,
+            CreatedAt = s.CreatedAt,
+            UpdatedAt = s.UpdatedAt
+        })
+        .FirstOrDefaultAsync();
 
-            if (student == null)
-            {
-                return NotFound("Student not found.");
-            }
+    if (student == null)
+    {
+        return NotFound("Student not found.");
+    }
 
-            return Ok(student);
-        }
+    if (!await CanAccessStudent(student.Id))
+    {
+        return StatusCode(
+            StatusCodes.Status403Forbidden,
+            "You do not have access to this student."
+        );
+    }
+
+    return Ok(student);
+}
+
 
         // =========================================
         // GET: api/students/qr/{qrToken}
         // Search student using QR token
         // =========================================
+        
         [HttpGet("qr/{qrToken}")]
-        public async Task<ActionResult<StudentResponse>> GetStudentByQrToken(
-            string qrToken)
+public async Task<ActionResult<StudentResponse>> GetStudentByQrToken(
+    string qrToken)
+{
+    var student = await _context.Students
+        .Where(s =>
+            s.QrToken == qrToken &&
+            s.IsActive)
+        .Select(s => new StudentResponse
         {
-            var student = await _context.Students
-                .Where(s =>
-                    s.QrToken == qrToken &&
-                    s.IsActive)
-                .Select(s => new StudentResponse
-                {
-                    Id = s.Id,
-                    StudentCode = s.StudentCode,
-                    FirstName = s.FirstName,
-                    LastName = s.LastName,
-                    DateOfBirth = s.DateOfBirth,
-                    Gender = s.Gender,
-                    Phone = s.Phone,
-                    ParentName = s.ParentName,
-                    ParentPhone = s.ParentPhone,
-                    Address = s.Address,
-                    School = s.School,
-                    QrToken = s.QrToken,
-                    IsActive = s.IsActive,
-                    CreatedAt = s.CreatedAt,
-                    UpdatedAt = s.UpdatedAt
-                })
-                .FirstOrDefaultAsync();
+            Id = s.Id,
+            StudentCode = s.StudentCode,
+            FirstName = s.FirstName,
+            LastName = s.LastName,
+            DateOfBirth = s.DateOfBirth,
+            Gender = s.Gender,
+            Phone = s.Phone,
+            ParentName = s.ParentName,
+            ParentPhone = s.ParentPhone,
+            Address = s.Address,
+            School = s.School,
+            QrToken = s.QrToken,
+            IsActive = s.IsActive,
+            CreatedAt = s.CreatedAt,
+            UpdatedAt = s.UpdatedAt
+        })
+        .FirstOrDefaultAsync();
 
-            if (student == null)
-            {
-                return NotFound("Student not found.");
-            }
+    if (student == null)
+    {
+        return NotFound("Student not found.");
+    }
 
-            return Ok(student);
-        }
+    if (!await CanAccessStudent(student.Id))
+    {
+        return StatusCode(
+            StatusCodes.Status403Forbidden,
+            "You do not have access to this student."
+        );
+    }
+
+    return Ok(student);
+}
 
         // =========================================
         // POST: api/students
         // Create new student
         // =========================================
-        [HttpPost]
-        public async Task<ActionResult<Student>> CreateStudent(
-            CreateStudentRequest request)
+       [Authorize(Roles = "Admin")]
+[HttpPost]
+public async Task<ActionResult<Student>> CreateStudent(
+    CreateStudentRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.FirstName))
             {
@@ -274,6 +440,15 @@ namespace ClassManagement.Api.Controllers
 public async Task<IActionResult> CreateStudentWithEnrollment(
     CreateStudentWithEnrollmentRequest request)
 {
+
+    if (!await CanAccessClass(request.ClassId))
+{
+    return StatusCode(
+        StatusCodes.Status403Forbidden,
+        "You do not have access to this class."
+    );
+}
+
     // =========================================
     // Validate Student
     // =========================================
@@ -431,6 +606,15 @@ public async Task<IActionResult> CreateStudentWithEnrollment(
             int id,
             UpdateStudentRequest request)
         {
+
+            if (!await CanAccessStudent(id))
+{
+    return StatusCode(
+        StatusCodes.Status403Forbidden,
+        "You do not have access to this student."
+    );
+}
+
             if (string.IsNullOrWhiteSpace(request.FirstName))
             {
                 return BadRequest("First name is required.");
@@ -465,19 +649,49 @@ public async Task<IActionResult> CreateStudentWithEnrollment(
             student.UpdatedAt = DateTime.UtcNow;
 
             if (request.JoinedDate.HasValue)
-            {
-                var enrollments = await _context.Enrollments
-                    .Where(e => e.StudentId == id)
-                    .ToListAsync();
+{
+    var role = User.FindFirst(ClaimTypes.Role)?.Value;
 
-                foreach (var enrollment in enrollments)
-                {
-                    enrollment.JoinedDate = DateTime.SpecifyKind(
-                        request.JoinedDate.Value.ToDateTime(TimeOnly.MinValue),
-                        DateTimeKind.Utc
-                    );
-                }
-            }
+    IQueryable<Enrollment> enrollmentQuery =
+        _context.Enrollments
+            .Where(e => e.StudentId == id);
+
+    if (role != "Admin")
+    {
+        var userIdClaim =
+            User.FindFirst(
+                ClaimTypes.NameIdentifier
+            )?.Value;
+
+        if (!int.TryParse(
+                userIdClaim,
+                out var userId))
+        {
+            return Unauthorized("Invalid user.");
+        }
+
+        enrollmentQuery = enrollmentQuery
+            .Where(e =>
+                _context.UserClasses.Any(uc =>
+                    uc.UserId == userId &&
+                    uc.ClassId == e.ClassId
+                )
+            );
+    }
+
+    var enrollments =
+        await enrollmentQuery.ToListAsync();
+
+    foreach (var enrollment in enrollments)
+    {
+        enrollment.JoinedDate =
+            DateTime.SpecifyKind(
+                request.JoinedDate.Value
+                    .ToDateTime(TimeOnly.MinValue),
+                DateTimeKind.Utc
+            );
+    }
+}
 
             await _context.SaveChangesAsync();
 
@@ -488,26 +702,33 @@ public async Task<IActionResult> CreateStudentWithEnrollment(
         // DELETE: api/students/{id}
         // Soft delete / deactivate student
         // =========================================
-        [Authorize(Roles = "Admin")]
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeactivateStudent(
-            int id)
-        {
-            var student = await _context.Students
-                .FindAsync(id);
+public async Task<IActionResult> DeactivateStudent(
+    int id)
+{
+    if (!await CanAccessStudent(id))
+    {
+        return StatusCode(
+            StatusCodes.Status403Forbidden,
+            "You do not have access to this student."
+        );
+    }
 
-            if (student == null)
-            {
-                return NotFound("Student not found.");
-            }
+    var student = await _context.Students
+        .FindAsync(id);
 
-            student.IsActive = false;
-            student.UpdatedAt = DateTime.UtcNow;
+    if (student == null)
+    {
+        return NotFound("Student not found.");
+    }
 
-            await _context.SaveChangesAsync();
+    student.IsActive = false;
+    student.UpdatedAt = DateTime.UtcNow;
 
-            return Ok(ToStudentResponse(student));
-        }
+    await _context.SaveChangesAsync();
+
+    return Ok(ToStudentResponse(student));
+}
 
         // =========================================
         // PATCH: api/students/{id}/activate
@@ -538,6 +759,7 @@ public async Task<IActionResult> CreateStudentWithEnrollment(
 // DELETE: api/students/{id}/permanent
 // Permanently delete a student and related records.
 // Admin only.
+
 
 [Authorize(Roles = "Admin")]
 [HttpDelete("{id}/permanent")]
