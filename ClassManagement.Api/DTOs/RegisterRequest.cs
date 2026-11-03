@@ -26,5 +26,8 @@ namespace ClassManagement.Api.DTOs
             ErrorMessage = "Role must be Admin or Staff."
         )]
         public string Role { get; set; } = "Staff";
+
+        // Classes assigned to Staff user
+        public List<int> ClassIds { get; set; } = new();
     }
 }

@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using ClassManagement.Api.DTOs;
+using System.Security.Claims;
+
 
 namespace ClassManagement.Api.Controllers
 {
@@ -18,6 +20,29 @@ namespace ClassManagement.Api.Controllers
         {
             _context = context;
         }
+
+        private async Task<bool> CanAccessClass(int classId)
+{
+    var role = User.FindFirst(ClaimTypes.Role)?.Value;
+
+    if (role == "Admin")
+    {
+        return true;
+    }
+
+    var userIdClaim =
+        User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+    if (!int.TryParse(userIdClaim, out var userId))
+    {
+        return false;
+    }
+
+    return await _context.UserClasses
+        .AnyAsync(uc =>
+            uc.UserId == userId &&
+            uc.ClassId == classId);
+}
 
         // =========================================
         // POST: api/enrollments
@@ -100,7 +125,17 @@ public async Task<IActionResult> GetStudentsByClass(
     int classId,
     int academicYear)
 {
+    if (!await CanAccessClass(classId))
+    {
+        return StatusCode(
+            StatusCodes.Status403Forbidden,
+            "You do not have access to this class."
+        );
+    }
+
     var classItem = await _context.Classes.FindAsync(classId);
+
+    
 
     if (classItem == null)
     {
@@ -139,12 +174,13 @@ public async Task<IActionResult> GetStudentsByClass(
         // api/enrollments/student/{studentId}/year/{academicYear}
         // Get student's enrollment for a year
         // =========================================
-       [HttpGet("student/{studentId}/year/{academicYear}")]
+      [HttpGet("student/{studentId}/year/{academicYear}")]
 public async Task<IActionResult> GetStudentEnrollment(
     int studentId,
     int academicYear)
 {
-    var student = await _context.Students.FindAsync(studentId);
+    var student = await _context.Students
+        .FindAsync(studentId);
 
     if (student == null)
     {
@@ -161,6 +197,7 @@ public async Task<IActionResult> GetStudentEnrollment(
             Id = e.Id,
             StudentId = e.StudentId,
             StudentCode = e.Student!.StudentCode,
+
             StudentName =
                 (e.Student.FirstName + " " +
                  (e.Student.LastName ?? "")).Trim(),
@@ -179,6 +216,14 @@ public async Task<IActionResult> GetStudentEnrollment(
         return NotFound("Enrollment not found.");
     }
 
+    if (!await CanAccessClass(enrollment.ClassId))
+    {
+        return StatusCode(
+            StatusCodes.Status403Forbidden,
+            "You do not have access to this student's class."
+        );
+    }
+
     return Ok(enrollment);
 }
 
@@ -187,14 +232,14 @@ public async Task<IActionResult> GetStudentEnrollment(
 // api/enrollments/student/{studentId}/year/{academicYear}
 // Change student's class for an academic year
 // =========================================
-[Authorize(Roles = "Admin")]
 [HttpPut("student/{studentId}/year/{academicYear}")]
 public async Task<IActionResult> UpdateStudentEnrollment(
     int studentId,
     int academicYear,
     CreateEnrollmentRequest request)
 {
-    if (academicYear < 2000 || academicYear > 2100)
+    if (academicYear < 2000 ||
+        academicYear > 2100)
     {
         return BadRequest("Invalid academic year.");
     }
@@ -212,19 +257,9 @@ public async Task<IActionResult> UpdateStudentEnrollment(
         return BadRequest("Student is inactive.");
     }
 
-    var classItem = await _context.Classes
-        .FindAsync(request.ClassId);
-
-    if (classItem == null)
-    {
-        return NotFound("Class not found.");
-    }
-
-    if (!classItem.IsActive)
-    {
-        return BadRequest("Class is inactive.");
-    }
-
+    // =========================================
+    // Find Current Enrollment
+    // =========================================
     var enrollment = await _context.Enrollments
         .FirstOrDefaultAsync(e =>
             e.StudentId == studentId &&
@@ -238,16 +273,60 @@ public async Task<IActionResult> UpdateStudentEnrollment(
         );
     }
 
+    // =========================================
+    // Staff must have access to CURRENT class
+    // =========================================
+    if (!await CanAccessClass(enrollment.ClassId))
+    {
+        return StatusCode(
+            StatusCodes.Status403Forbidden,
+            "You do not have access to the student's current class."
+        );
+    }
+
+    // =========================================
+    // Staff must also have access to TARGET class
+    // =========================================
+    if (!await CanAccessClass(request.ClassId))
+    {
+        return StatusCode(
+            StatusCodes.Status403Forbidden,
+            "You do not have access to the selected class."
+        );
+    }
+
+    var classItem = await _context.Classes
+        .FindAsync(request.ClassId);
+
+    if (classItem == null)
+    {
+        return NotFound("Class not found.");
+    }
+
+    if (!classItem.IsActive)
+    {
+        return BadRequest("Class is inactive.");
+    }
+
+    // =========================================
+    // Update Class
+    // =========================================
     enrollment.ClassId = request.ClassId;
 
-if (request.JoinedDate.HasValue)
-{
-    enrollment.JoinedDate = DateTime.SpecifyKind(
-        request.JoinedDate.Value.ToDateTime(TimeOnly.MinValue),
-        DateTimeKind.Utc);
-}
+    // =========================================
+    // Update Joined Date
+    // =========================================
+    if (request.JoinedDate.HasValue)
+    {
+        enrollment.JoinedDate =
+            DateTime.SpecifyKind(
+                request.JoinedDate.Value
+                    .ToDateTime(TimeOnly.MinValue),
+                DateTimeKind.Utc
+            );
+    }
 
-await _context.SaveChangesAsync();
+    await _context.SaveChangesAsync();
 
     return Ok(new EnrollmentResponse
     {

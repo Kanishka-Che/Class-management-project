@@ -1,7 +1,9 @@
 using ClassManagement.Api.Data;
+using ClassManagement.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+
 
 namespace ClassManagement.Api.Controllers
 {
@@ -17,50 +19,78 @@ namespace ClassManagement.Api.Controllers
             _context = context;
         }
 
-        // GET: api/users
-        [HttpGet]
-        public async Task<IActionResult> GetUsers()
+       // GET: api/users
+[HttpGet]
+public async Task<IActionResult> GetUsers()
+{
+    var users = await _context.Users
+        .OrderBy(u => u.Username)
+        .Select(u => new
         {
-            var users = await _context.Users
-                .OrderBy(u => u.Username)
-                .Select(u => new
+            u.Id,
+            u.Username,
+            u.Role,
+            u.IsActive,
+            u.CreatedAt,
+            u.UpdatedAt,
+
+            assignedClasses = u.UserClasses
+                .OrderBy(uc => uc.Class!.Name)
+                .Select(uc => new
                 {
-                    u.Id,
-                    u.Username,
-                    u.Role,
-                    u.IsActive,
-                    u.CreatedAt,
-                    u.UpdatedAt
+                    classId = uc.ClassId,
+
+                    className = uc.Class != null
+                        ? uc.Class.Name
+                        : "Unknown Class"
                 })
-                .ToListAsync();
+                .ToList()
+        })
+        .ToListAsync();
 
-            return Ok(users);
-        }
+    return Ok(users);
+}
 
-        // GET: api/users/1
-        [HttpGet("{id}")]
-        public async Task<IActionResult> GetUser(int id)
+       // GET: api/users/1
+[HttpGet("{id}")]
+public async Task<IActionResult> GetUser(int id)
+{
+    var user = await _context.Users
+        .Where(u => u.Id == id)
+        .Select(u => new
         {
-            var user = await _context.Users
-                .Where(u => u.Id == id)
-                .Select(u => new
+            u.Id,
+            u.Username,
+            u.Role,
+            u.IsActive,
+            u.CreatedAt,
+            u.UpdatedAt,
+
+            assignedClassIds = u.UserClasses
+                .Select(uc => uc.ClassId)
+                .ToList(),
+
+            assignedClasses = u.UserClasses
+                .OrderBy(uc => uc.Class!.Name)
+                .Select(uc => new
                 {
-                    u.Id,
-                    u.Username,
-                    u.Role,
-                    u.IsActive,
-                    u.CreatedAt,
-                    u.UpdatedAt
+                    classId = uc.ClassId,
+
+                    className = uc.Class != null
+                        ? uc.Class.Name
+                        : "Unknown Class"
                 })
-                .FirstOrDefaultAsync();
+                .ToList()
+        })
+        .FirstOrDefaultAsync();
 
-            if (user == null)
-            {
-                return NotFound("User not found.");
-            }
+    if (user == null)
+    {
+        return NotFound("User not found.");
+    }
 
-            return Ok(user);
-        }
+    return Ok(user);
+}
 
         // PATCH: api/users/1/deactivate
         [HttpPatch("{id}/deactivate")]
@@ -314,5 +344,93 @@ public class ChangeUsernameRequest
     public string NewUsername { get; set; } = string.Empty;
     public string CurrentPassword { get; set; } = string.Empty;
 }
+
+// =========================================
+// PUT: api/users/{id}/classes
+// Update classes assigned to Staff user
+// Admin only
+// =========================================
+[HttpPut("{id}/classes")]
+public async Task<IActionResult> UpdateUserClasses(
+    int id,
+    [FromBody] UpdateUserClassesRequest request)
+{
+    var user = await _context.Users
+        .FirstOrDefaultAsync(u => u.Id == id);
+
+    if (user == null)
+    {
+        return NotFound("User not found.");
+    }
+
+    if (user.Role != "Staff")
+    {
+        return BadRequest(
+            "Classes can only be assigned to Staff users."
+        );
+    }
+
+    var classIds = request.ClassIds
+        .Distinct()
+        .ToList();
+
+    if (classIds.Count > 0)
+    {
+        var validClassIds = await _context.Classes
+            .Where(c =>
+                classIds.Contains(c.Id) &&
+                c.IsActive
+            )
+            .Select(c => c.Id)
+            .ToListAsync();
+
+        if (validClassIds.Count != classIds.Count)
+        {
+            return BadRequest(
+                "One or more selected classes are invalid or inactive."
+            );
+        }
+    }
+
+    // Remove old assignments
+    var oldAssignments = await _context.UserClasses
+        .Where(uc => uc.UserId == id)
+        .ToListAsync();
+
+    _context.UserClasses.RemoveRange(
+        oldAssignments
+    );
+
+    // Add new assignments
+    foreach (var classId in classIds)
+    {
+        _context.UserClasses.Add(
+            new UserClass
+            {
+                UserId = id,
+                ClassId = classId
+            }
+        );
+    }
+
+    user.UpdatedAt = DateTime.UtcNow;
+
+    await _context.SaveChangesAsync();
+
+    return Ok(new
+    {
+        message = "Class access updated successfully.",
+        userId = user.Id,
+        username = user.Username,
+        classIds
+    });
+}
+
+public class UpdateUserClassesRequest
+{
+    public List<int> ClassIds { get; set; }
+        = new();
+}
+
     }
 }

@@ -269,6 +269,30 @@ namespace ClassManagement.Api.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("ClassManagement.Api.Models.UserClass", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ClassId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClassId");
+
+                    b.HasIndex("UserId", "ClassId")
+                        .IsUnique();
+
+                    b.ToTable("UserClasses");
+                });
+
             modelBuilder.Entity("ClassManagement.Api.Models.Attendance", b =>
                 {
                     b.HasOne("ClassManagement.Api.Models.Class", "Class")
@@ -324,6 +348,35 @@ namespace ClassManagement.Api.Migrations
                     b.Navigation("Class");
 
                     b.Navigation("Student");
+                });
+
+            modelBuilder.Entity("ClassManagement.Api.Models.UserClass", b =>
+                {
+                    b.HasOne("ClassManagement.Api.Models.Class", "Class")
+                        .WithMany("UserClasses")
+                        .HasForeignKey("ClassId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ClassManagement.Api.Models.User", "User")
+                        .WithMany("UserClasses")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Class");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ClassManagement.Api.Models.Class", b =>
+                {
+                    b.Navigation("UserClasses");
+                });
+
+            modelBuilder.Entity("ClassManagement.Api.Models.User", b =>
+                {
+                    b.Navigation("UserClasses");
                 });
 #pragma warning restore 612, 618
         }

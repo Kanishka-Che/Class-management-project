@@ -218,10 +218,13 @@ export default function StudentDetailsPage() {
 
         const storedUser = sessionStorage.getItem("user");
 
-        if (storedUser) {
-          const user = JSON.parse(storedUser);
-          setIsAdmin(user.role === "Admin");
-        }
+let adminUser = false;
+
+if (storedUser) {
+  const user = JSON.parse(storedUser);
+  adminUser = user.role === "Admin";
+  setIsAdmin(adminUser);
+}
 
         const [studentResponse, classesResponse] = await Promise.all([
           api.get(`/api/students/${params.id}`),
@@ -231,15 +234,20 @@ export default function StudentDetailsPage() {
         setStudent(studentResponse.data);
         setClasses(classesResponse.data);
 
-        await Promise.all([
-          loadEnrollment(params.id as string, currentYear),
+        const requests = [
+  loadQrCode(params.id as string),
+  loadAttendanceHistory(params.id as string),
+  loadPaymentHistory(params.id as string),
+];
 
-          loadQrCode(params.id as string),
+if (adminUser) {
+  requests.push(
+    loadEnrollment(params.id as string, currentYear)
+  );
+}
 
-          loadAttendanceHistory(params.id as string),
+await Promise.all(requests);
 
-          loadPaymentHistory(params.id as string),
-        ]);
       } catch (error) {
         console.error("Student Details Error:", error);
 
@@ -493,15 +501,13 @@ export default function StudentDetailsPage() {
             Edit Student
           </button>
 
-          {isAdmin && (
-            <button
-              onClick={handleDeactivate}
-              disabled={deactivating}
-              className="rounded-lg bg-red-600 px-5 py-3 font-medium text-white hover:bg-red-700 disabled:opacity-60"
-            >
-              {deactivating ? "Deactivating..." : "Deactivate"}
-            </button>
-          )}
+          <button
+  onClick={handleDeactivate}
+  disabled={deactivating}
+  className="rounded-lg bg-red-600 px-5 py-3 font-medium text-white hover:bg-red-700 disabled:opacity-60"
+>
+  {deactivating ? "Deactivating..." : "Deactivate"}
+</button>
 
           <button
             onClick={() => router.push("/dashboard/students")}
@@ -610,6 +616,7 @@ export default function StudentDetailsPage() {
       </div>
 
       {/* Enrollment */}
+      {isAdmin && (
       <div className="mt-6 max-w-4xl rounded-2xl bg-white p-8 shadow-sm">
         <h2 className="text-xl font-semibold text-gray-900">
           Class Enrollment
@@ -713,6 +720,7 @@ export default function StudentDetailsPage() {
           </div>
         )}
       </div>
+      )}
       {/* Attendance History */}
       <div className="mt-6 max-w-4xl overflow-hidden rounded-2xl bg-white shadow-sm">
         <div className="border-b p-6">

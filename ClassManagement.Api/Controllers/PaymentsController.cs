@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using ClassManagement.Api.DTOs;
 using ClassManagement.Api.Services;
+using System.Security.Claims;
 
 namespace ClassManagement.Api.Controllers
 {
@@ -24,6 +25,29 @@ public PaymentsController(
     _smsService = smsService;
 }
 
+private async Task<bool> CanAccessClass(int classId)
+{
+    var role = User.FindFirst(ClaimTypes.Role)?.Value;
+
+    if (role == "Admin")
+    {
+        return true;
+    }
+
+    var userIdClaim =
+        User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+    if (!int.TryParse(userIdClaim, out var userId))
+    {
+        return false;
+    }
+
+    return await _context.UserClasses
+        .AnyAsync(uc =>
+            uc.UserId == userId &&
+            uc.ClassId == classId);
+}
+
         // =========================================
         // POST: api/payments
         // Record monthly payment
@@ -32,6 +56,14 @@ public PaymentsController(
 public async Task<IActionResult> CreatePayment(
     CreatePaymentRequest request)
 {
+    if (!await CanAccessClass(request.ClassId))
+{
+    return StatusCode(
+        StatusCodes.Status403Forbidden,
+        "You do not have access to this class."
+    );
+}
+
     // Validate month
     if (request.Month < 1 || request.Month > 12)
     {
@@ -163,43 +195,117 @@ if (!string.IsNullOrWhiteSpace(smsPhoneNumber))
         // GET: api/payments/student/{studentId}
         // Student payment history
         // =========================================
-        [HttpGet("student/{studentId}")]
-        public async Task<IActionResult> GetStudentPaymentHistory(
-            int studentId)
-        {
-            var student = await _context.Students.FindAsync(studentId);
+       [HttpGet("student/{studentId}")]
+public async Task<IActionResult> GetStudentPaymentHistory(
+    int studentId)
+{
+    var student = await _context.Students
+        .FindAsync(studentId);
 
-            if (student == null)
-            {
-                return NotFound("Student not found.");
-            }
-
-            var payments = await _context.Payments
-    .Where(p => p.StudentId == studentId)
-    .OrderByDescending(p => p.Year)
-    .ThenByDescending(p => p.Month)
-    .Select(p => new PaymentResponse
+    if (student == null)
     {
-        Id = p.Id,
+        return NotFound("Student not found.");
+    }
 
-        StudentId = p.StudentId,
-        StudentCode = p.Student!.StudentCode,
-        StudentName =
-            (p.Student.FirstName + " " +
-             (p.Student.LastName ?? "")).Trim(),
+    var role = User.FindFirst(ClaimTypes.Role)?.Value;
 
-        ClassId = p.ClassId,
-        ClassName = p.Class!.Name,
+    // =========================================
+    // ADMIN -> Full payment history
+    // =========================================
+    if (role == "Admin")
+    {
+        var adminPayments = await _context.Payments
+            .Where(p => p.StudentId == studentId)
+            .OrderByDescending(p => p.Year)
+            .ThenByDescending(p => p.Month)
+            .Select(p => new PaymentResponse
+            {
+                Id = p.Id,
 
-        Year = p.Year,
-        Month = p.Month,
-        Amount = p.Amount,
-        PaidAt = p.PaidAt
-    })
-    .ToListAsync();
+                StudentId = p.StudentId,
+                StudentCode = p.Student!.StudentCode,
+                StudentName =
+                    (p.Student.FirstName + " " +
+                     (p.Student.LastName ?? "")).Trim(),
 
-            return Ok(payments);
-        }
+                ClassId = p.ClassId,
+                ClassName = p.Class!.Name,
+
+                Year = p.Year,
+                Month = p.Month,
+                Amount = p.Amount,
+                PaidAt = p.PaidAt
+            })
+            .ToListAsync();
+
+        return Ok(adminPayments);
+    }
+
+    // =========================================
+    // STAFF
+    // =========================================
+    var userIdClaim =
+        User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+    if (!int.TryParse(userIdClaim, out var userId))
+    {
+        return Unauthorized("Invalid user.");
+    }
+
+    // Check whether this Staff user has access
+    // to this student through an assigned class.
+    var hasStudentAccess = await _context.Enrollments
+        .AnyAsync(e =>
+            e.StudentId == studentId &&
+            e.IsActive &&
+            _context.UserClasses.Any(uc =>
+                uc.UserId == userId &&
+                uc.ClassId == e.ClassId
+            )
+        );
+
+    if (!hasStudentAccess)
+    {
+        return StatusCode(
+            StatusCodes.Status403Forbidden,
+            "You do not have access to this student."
+        );
+    }
+
+    // Staff sees payment history only for
+    // classes assigned to this Staff user.
+    var staffPayments = await _context.Payments
+        .Where(p =>
+            p.StudentId == studentId &&
+            _context.UserClasses.Any(uc =>
+                uc.UserId == userId &&
+                uc.ClassId == p.ClassId
+            )
+        )
+        .OrderByDescending(p => p.Year)
+        .ThenByDescending(p => p.Month)
+        .Select(p => new PaymentResponse
+        {
+            Id = p.Id,
+
+            StudentId = p.StudentId,
+            StudentCode = p.Student!.StudentCode,
+            StudentName =
+                (p.Student.FirstName + " " +
+                 (p.Student.LastName ?? "")).Trim(),
+
+            ClassId = p.ClassId,
+            ClassName = p.Class!.Name,
+
+            Year = p.Year,
+            Month = p.Month,
+            Amount = p.Amount,
+            PaidAt = p.PaidAt
+        })
+        .ToListAsync();
+
+    return Ok(staffPayments);
+}
 
         // =========================================
         // GET:
@@ -369,32 +475,42 @@ if (!string.IsNullOrWhiteSpace(smsPhoneNumber))
         // =========================================
         // Common validation for payment reports
         // =========================================
-        private async Task<IActionResult?> ValidateClassYearMonth(
-            int classId,
-            int year,
-            int month)
-        {
-            if (month < 1 || month > 12)
-            {
-                return BadRequest(
-                    "Month must be between 1 and 12."
-                );
-            }
+       private async Task<IActionResult?> ValidateClassYearMonth(
+    int classId,
+    int year,
+    int month)
+{
+    if (month < 1 || month > 12)
+    {
+        return BadRequest(
+            "Month must be between 1 and 12."
+        );
+    }
 
-            if (year < 2000 || year > 2100)
-            {
-                return BadRequest("Invalid year.");
-            }
+    if (year < 2000 || year > 2100)
+    {
+        return BadRequest("Invalid year.");
+    }
 
-            var classExists = await _context.Classes
-                .AnyAsync(c => c.Id == classId);
+    var classExists = await _context.Classes
+        .AnyAsync(c =>
+            c.Id == classId &&
+            c.IsActive);
 
-            if (!classExists)
-            {
-                return NotFound("Class not found.");
-            }
+    if (!classExists)
+    {
+        return NotFound("Class not found.");
+    }
 
-            return null;
-        }
+    if (!await CanAccessClass(classId))
+    {
+        return StatusCode(
+            StatusCodes.Status403Forbidden,
+            "You do not have access to this class."
+        );
+    }
+
+    return null;
+}
     }
 }
