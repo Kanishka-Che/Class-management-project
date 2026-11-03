@@ -269,6 +269,10 @@ export default function DashboardPage() {
               href: "/dashboard/students",
             },
             {
+              name: "Promote Students",
+              href: "/dashboard/enrollments/promote",
+            },
+            {
               name: "Payments",
               href: "/dashboard/payments",
             },

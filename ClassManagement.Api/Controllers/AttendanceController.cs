@@ -156,24 +156,44 @@ public async Task<IActionResult> MarkAttendanceByQr(
         return BadRequest("Class is inactive.");
     }
 
-    // Student must be enrolled in this class
+    // // Student must be enrolled in this class
+    // var enrollment = await _context.Enrollments
+    //     .Where(e =>
+    //         e.StudentId == student.Id &&
+    //         e.ClassId == request.ClassId &&
+    //         e.IsActive)
+    //     .OrderByDescending(e => e.AcademicYear)
+    //     .FirstOrDefaultAsync();
+
+    // if (enrollment == null)
+    // {
+    //     return BadRequest(
+    //         "Student is not enrolled in this class."
+    //     );
+    // }
+
+    // var sriLankaNow = SriLankaTime.Now();
+    // var today = DateOnly.FromDateTime(sriLankaNow);
+
+
+    var sriLankaNow = SriLankaTime.Now();
+    var today = DateOnly.FromDateTime(sriLankaNow);
+    var currentYear = sriLankaNow.Year; 
+
+    // Student must be enrolled in this class for the current academic year
     var enrollment = await _context.Enrollments
-        .Where(e =>
+        .FirstOrDefaultAsync(e =>
             e.StudentId == student.Id &&
             e.ClassId == request.ClassId &&
-            e.IsActive)
-        .OrderByDescending(e => e.AcademicYear)
-        .FirstOrDefaultAsync();
+            e.AcademicYear == currentYear && 
+            e.IsActive);
 
     if (enrollment == null)
     {
         return BadRequest(
-            "Student is not enrolled in this class."
+            $"Student is not enrolled in this class for the academic year {currentYear}."
         );
     }
-
-    var sriLankaNow = SriLankaTime.Now();
-    var today = DateOnly.FromDateTime(sriLankaNow);
 
     // Prevent duplicate attendance
     var existingAttendance = await _context.Attendances

@@ -268,5 +268,90 @@ await _context.SaveChangesAsync();
         IsActive = enrollment.IsActive
     });
 }
+
+// =========================================
+// DTO for Promotion Request
+// =========================================
+public class PromoteStudentsRequest
+{
+    public int FromClassId { get; set; }
+    public int FromAcademicYear { get; set; }
+    public int ToClassId { get; set; }
+    public int ToAcademicYear { get; set; }
+}
+
+// =========================================
+// POST: api/enrollments/promote
+// Bulk promote/enroll students from one class/year to another
+// =========================================
+[Authorize(Roles = "Admin")]
+[HttpPost("promote")]
+public async Task<IActionResult> PromoteStudents([FromBody] PromoteStudentsRequest request)
+{
+    
+    if (request.ToAcademicYear < 2000 || request.ToAcademicYear > 2100)
+    {
+        return BadRequest("Invalid target academic year.");
+    }
+
+    if (request.FromClassId == request.ToClassId && request.FromAcademicYear == request.ToAcademicYear)
+    {
+        return BadRequest("Source and target class/year cannot be the same.");
+    }
+
+  
+    var sourceEnrollments = await _context.Enrollments
+        .Where(e => e.ClassId == request.FromClassId 
+                 && e.AcademicYear == request.FromAcademicYear 
+                 && e.IsActive)
+        .ToListAsync();
+
+    if (!sourceEnrollments.Any())
+    {
+        return NotFound("No active students found in the source class for the given academic year.");
+    }
+
+    int promotedCount = 0;
+    int alreadyEnrolledCount = 0;
+
+    foreach (var oldEnrollment in sourceEnrollments)
+    {
+       
+        var existingTargetEnrollment = await _context.Enrollments
+            .FirstOrDefaultAsync(e => e.StudentId == oldEnrollment.StudentId 
+                                   && e.ClassId == request.ToClassId 
+                                   && e.AcademicYear == request.ToAcademicYear);
+
+        if (existingTargetEnrollment != null)
+        {
+            alreadyEnrolledCount++;
+            continue;
+        }
+
+        
+        var newEnrollment = new Enrollment
+        {
+            StudentId = oldEnrollment.StudentId,
+            ClassId = request.ToClassId,
+            AcademicYear = request.ToAcademicYear,
+            JoinedDate = oldEnrollment.JoinedDate,
+            IsActive = true
+        };
+
+        _context.Enrollments.Add(newEnrollment);
+        promotedCount++;
+    }
+
+    await _context.SaveChangesAsync();
+
+    
+    return Ok(new
+    {
+        message = $"Successfully promoted {promotedCount} students. ({alreadyEnrolledCount} already enrolled)",
+        promotedCount,
+        alreadyEnrolledCount
+    });
+}
+
     }
 }
