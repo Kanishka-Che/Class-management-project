@@ -1,3 +1,4 @@
+
 using System.ComponentModel.DataAnnotations;
 
 namespace ClassManagement.Api.DTOs
@@ -5,17 +6,19 @@ namespace ClassManagement.Api.DTOs
     public class QrAttendanceRequest
     {
         [Required(ErrorMessage = "QR token is required.")]
-        [StringLength(
-            200,
-            ErrorMessage = "QR token cannot exceed 200 characters."
-        )]
+        [StringLength(200,
+            ErrorMessage = "QR token cannot exceed 200 characters.")]
         public string QrToken { get; set; } = string.Empty;
 
-        [Range(
-            1,
-            int.MaxValue,
-            ErrorMessage = "Valid class ID is required."
-        )]
+        [Range(1, int.MaxValue,
+            ErrorMessage = "Valid class ID is required.")]
         public int ClassId { get; set; }
+
+        [Required]
+        [RegularExpression(
+            "^(Regular|Extra)$",
+            ErrorMessage = "Session type must be Regular or Extra."
+        )]
+        public string SessionType { get; set; } = "Regular";
     }
 }

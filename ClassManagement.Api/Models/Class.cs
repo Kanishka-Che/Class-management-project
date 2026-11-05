@@ -1,3 +1,4 @@
+
 namespace ClassManagement.Api.Models
 {
     public class Class
@@ -22,7 +23,12 @@ namespace ClassManagement.Api.Models
 
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+        // Staff assigned to this class
         public ICollection<UserClass> UserClasses { get; set; }
-    = new List<UserClass>();
+            = new List<UserClass>();
+
+        // Historical monthly fee changes
+        public ICollection<ClassMonthlyFee> MonthlyFeeHistory { get; set; }
+            = new List<ClassMonthlyFee>();
     }
 }

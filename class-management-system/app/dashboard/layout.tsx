@@ -21,7 +21,12 @@ const adminNavigation = [
 
 const staffNavigation = [
   {
-    name: "Students",
+    name: "Dashboard",
+    href: "/dashboard",
+    icon: "home",
+  },
+  {
+    name: "My Students",
     href: "/dashboard/students",
     icon: "users",
   },
@@ -366,107 +371,66 @@ export default function DashboardLayout({
           aria-label="Mobile navigation"
           className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.06)] md:hidden"
         >
-          {/* <div className="grid grid-cols-5 items-end gap-1 px-2 py-2">
-            {[
-              navigation[0],
-              navigation[1],
-              { name: "Scan", href: "/dashboard/attendance/qr", icon: "scan" },
-              navigation[3],
-            ].map((item, index) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium ${
-                  index === 2
-                    ? "bg-blue-600 text-white"
-                    : isActive(item.href)
-                      ? "text-blue-600"
-                      : "text-slate-500"
-                }`}
-              >
-                <NavIcon name={item.icon} className="h-6 w-6" />
-                {item.name}
-              </Link>
-            ))}
-
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium text-slate-500"
-            >
-              <NavIcon name="menu" className="h-6 w-6" />
-              Menu
-            </button>
-          </div> */}
-        <div
-  className={`grid items-end gap-1 px-2 py-2 ${
-    user?.role === "Staff"
-      ? "grid-cols-4"
-      : "grid-cols-5"
-  }`}
->
-  {(
-    user?.role === "Staff"
-      ? [
-          {
-            name: "Add",
-            href: "/dashboard/students/add",
-            icon: "users",
-          },
-          {
-            name: "Attendance",
-            href: "/dashboard/attendance",
-            icon: "calendar",
-          },
-          {
-            name: "Scan",
-            href: "/dashboard/attendance/qr",
-            icon: "scan",
-          },
-        ]
-      : [
-          adminNavigation[0],
-          adminNavigation[1],
-          {
-            name: "Scan",
-            href: "/dashboard/attendance/qr",
-            icon: "scan",
-          },
-          adminNavigation[3],
-        ]
-  ).map((item) => (
+          
+<div className="grid grid-cols-5 items-center gap-1 px-2 py-2">
+  {[
+    {
+      name: "Dashboard",
+      href: "/dashboard",
+      icon: "home",
+    },
+    {
+      name: "Students",
+      href:
+        user?.role === "Staff"
+          ? "/dashboard/students/add"
+          : "/dashboard/students",
+      icon: "users",
+    },
+    {
+      name: "QR Scan",
+      href: "/dashboard/attendance/qr",
+      icon: "scan",
+    },
+    {
+      name: "Attendance",
+      href: "/dashboard/attendance",
+      icon: "calendar",
+    },
+  ].map((item) => (
     <Link
       key={item.href}
       href={item.href}
-      className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium ${
-        item.name === "Scan"
-          ? "bg-blue-600 text-white"
+      className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-medium ${
+        item.name === "QR Scan"
+          ? "text-blue-600"
           : isActive(item.href)
             ? "text-blue-600"
             : "text-slate-500"
       }`}
     >
-      <NavIcon
-        name={item.icon}
-        className="h-6 w-6"
-      />
+      {item.name === "QR Scan" ? (
+        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-white shadow-md">
+          <NavIcon name="scan" className="h-6 w-6" />
+        </span>
+      ) : (
+        <NavIcon name={item.icon} className="h-6 w-6" />
+      )}
 
-      {item.name}
+      <span>{item.name}</span>
     </Link>
   ))}
 
   <button
     type="button"
     onClick={() => setMobileMenuOpen(true)}
-    className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium text-slate-500"
+    className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-medium text-slate-500"
   >
-    <NavIcon
-      name="menu"
-      className="h-6 w-6"
-    />
-    Menu
+    <NavIcon name="menu" className="h-6 w-6" />
+    <span>Menu</span>
   </button>
 </div>
+
 
         </nav>
 

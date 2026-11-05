@@ -4,6 +4,7 @@ using ClassManagement.Api.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace ClassManagement.Api.Controllers
 {
@@ -19,6 +20,63 @@ namespace ClassManagement.Api.Controllers
             _context = context;
         }
 
+       
+
+    // =========================================
+    // Admin / Staff Class Access
+    // =========================================
+
+    private bool TryGetAccessScope(
+        out bool isAdmin,
+        out int userId)
+    {
+        isAdmin = false;
+        userId = 0;
+
+        var role = User.FindFirst(ClaimTypes.Role)?.Value;
+
+        if (role == "Admin")
+        {
+            isAdmin = true;
+            return true;
+        }
+
+        if (role != "Staff")
+        {
+            return false;
+        }
+
+        var claim = User.FindFirst(
+            ClaimTypes.NameIdentifier
+        )?.Value;
+
+        return int.TryParse(claim, out userId);
+    }
+
+    private async Task<bool> CanAccessClass(int classId)
+    {
+        if (!TryGetAccessScope(
+            out var isAdmin,
+            out var userId))
+        {
+            return false;
+        }
+
+        if (isAdmin)
+        {
+            return true;
+        }
+
+        return await _context.UserClasses.AnyAsync(uc =>
+            uc.UserId == userId &&
+            uc.ClassId == classId
+        );
+    }
+
+    // =========================================
+    // Dashboard Summary
+    // =========================================
+
         [HttpGet("summary")]
         public async Task<IActionResult> GetDashboardSummary(
             [FromQuery] int? year,
@@ -28,6 +86,13 @@ namespace ClassManagement.Api.Controllers
 
             var selectedYear = year ?? today.Year;
             var selectedMonth = month ?? today.Month;
+
+            if (!TryGetAccessScope(
+    out var isAdmin,
+    out var userId))
+{
+    return Unauthorized("Invalid user.");
+}
 
             if (selectedYear < 2000 || selectedYear > 2100 ||
                 selectedMonth < 1 || selectedMonth > 12)
@@ -46,11 +111,32 @@ namespace ClassManagement.Api.Controllers
             var nextMonthStart = monthStart.AddMonths(1);
 
             // Current active students and classes.
-            var totalStudents = await _context.Students
-                .CountAsync(s => s.IsActive);
+           var totalStudents = await _context.Enrollments
+    .Where(e =>
+        e.IsActive &&
+        e.Student != null &&
+        e.Student.IsActive &&
+        e.Class != null &&
+        e.Class.IsActive &&
+        (isAdmin ||
+            _context.UserClasses.Any(uc =>
+                uc.UserId == userId &&
+                uc.ClassId == e.ClassId
+            ))
+    )
+    .Select(e => e.StudentId)
+    .Distinct()
+    .CountAsync();
 
-            var totalClasses = await _context.Classes
-                .CountAsync(c => c.IsActive);
+var totalClasses = await _context.Classes
+    .CountAsync(c =>
+        c.IsActive &&
+        (isAdmin ||
+            _context.UserClasses.Any(uc =>
+                uc.UserId == userId &&
+                uc.ClassId == c.Id
+            ))
+    );
 
             // Attendance for the selected month.
             // Only currently active students and classes.
@@ -62,6 +148,12 @@ namespace ClassManagement.Api.Controllers
                     a.Student.IsActive &&
                     a.Class != null &&
                     a.Class.IsActive
+                    &&
+(isAdmin ||
+    _context.UserClasses.Any(uc =>
+        uc.UserId == userId &&
+        uc.ClassId == a.ClassId
+    ))
                 );
 
             // Preserve today's attendance as a separate metric.
@@ -72,6 +164,12 @@ namespace ClassManagement.Api.Controllers
                     a.Student.IsActive &&
                     a.Class != null &&
                     a.Class.IsActive
+                    &&
+(isAdmin ||
+    _context.UserClasses.Any(uc =>
+        uc.UserId == userId &&
+        uc.ClassId == a.ClassId
+    ))
                 );
 
             // Payments for the selected month.
@@ -83,7 +181,12 @@ namespace ClassManagement.Api.Controllers
                     p.Student != null &&
                     p.Student.IsActive &&
                     p.Class != null &&
-                    p.Class.IsActive
+p.Class.IsActive &&
+(isAdmin ||
+    _context.UserClasses.Any(uc =>
+        uc.UserId == userId &&
+        uc.ClassId == p.ClassId
+    ))
                 );
 
             // Count unique students who paid.
@@ -104,6 +207,12 @@ namespace ClassManagement.Api.Controllers
                     e.Student.IsActive &&
                     e.Class != null &&
                     e.Class.IsActive
+                    &&
+(isAdmin ||
+    _context.UserClasses.Any(uc =>
+        uc.UserId == userId &&
+        uc.ClassId == e.ClassId
+    ))
                 );
 
             // A student may be enrolled in multiple classes.
@@ -339,9 +448,24 @@ public async Task<IActionResult> GetMonthlyClassSummary(
     }
 
     // Get active classes.
-    var classes = await _context.Classes
-        .Where(c => c.IsActive)
-        .OrderBy(c => c.Name)
+   if (!TryGetAccessScope(
+    out var isAdmin,
+    out var userId))
+{
+    return Unauthorized("Invalid user.");
+}
+
+// Get only classes accessible to this user.
+var classes = await _context.Classes
+    .Where(c =>
+        c.IsActive &&
+        (isAdmin ||
+            _context.UserClasses.Any(uc =>
+                uc.UserId == userId &&
+                uc.ClassId == c.Id
+            ))
+    )
+    .OrderBy(c => c.Name)
         .Select(c => new
         {
             c.Id,

@@ -16,19 +16,36 @@ type ClassItem = {
   startTime: string | null;
   isActive: boolean;
 };
+type DailyCollection = {
+  classId: number;
+  date: string;
+  totalCollection: number;
+  paymentCount: number;
+};
+
+type DailyRevenueShare = {
+  classId: number;
+  date: string;
+  classPercentage: number;
+  teacherPercentage: number;
+  isSaved?: boolean;
+  updatedBy?: string | null;
+  updatedAt?: string | null;
+};
 
 type ScanResult = {
   message?: string;
   attendance: {
-    id: number;
-    studentId: number;
-    studentCode: string;
-    studentName: string;
-    classId: number;
-    className: string;
-    attendanceDate: string;
-    checkInTime: string;
-  };
+  id: number;
+  studentId: number;
+  studentCode: string;
+  studentName: string;
+  classId: number;
+  className: string;
+  attendanceDate: string;
+  checkInTime: string;
+  sessionType: "Regular" | "Extra";
+};
 
   student: {
     id: number;
@@ -60,19 +77,39 @@ type ScanResult = {
     monthlyFee: number;
     paidAt: string | null;
     unpaidMonths?: string[];
+    paidMonths?: string[];
   };
 
-  attendanceSummary?: {
-    joinedDate: string;
-    daysAttendedThisMonth: number;
-  };
+ attendanceSummary?: {
+  joinedDate: string;
+  daysAttendedThisMonth: number;
+  regularDaysAttendedThisMonth?: number;
+};
 };
 
 export default function QrAttendancePage() {
   const router = useRouter();
 
+  
+
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [selectedClassId, setSelectedClassId] = useState("");
+  const [sessionType, setSessionType] =
+  useState<"Regular" | "Extra">("Regular");
+
+  const [dailyCollection, setDailyCollection] =
+  useState<DailyCollection | null>(null);
+
+const [dailyShare, setDailyShare] =
+  useState<DailyRevenueShare | null>(null);
+
+const [classPercentage, setClassPercentage] = useState(20);
+
+const [loadingDaily, setLoadingDaily] = useState(false);
+const [savingShare, setSavingShare] = useState(false);
+
+const [dailyError, setDailyError] = useState("");
+const [shareSuccess, setShareSuccess] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -83,19 +120,26 @@ export default function QrAttendancePage() {
   const [error, setError] = useState("");
   const [recordingPayment, setRecordingPayment] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState("");
+  const [combinedSuccess, setCombinedSuccess] = useState("");
 
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const feePaymentRequired =
+  scanResult !== null &&
+  scanResult.attendance.sessionType === "Regular" &&
+  !scanResult.payment.isPaid &&
+  (scanResult.attendanceSummary?.regularDaysAttendedThisMonth ?? 0) >= 3;
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const processingRef = useRef(false);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
   const clearMessages = () => {
-    setSuccess("");
-    setWarning("");
-    setError("");
-    setPaymentSuccess("");
-  };
+  setSuccess("");
+  setWarning("");
+  setError("");
+  setPaymentSuccess("");
+  setCombinedSuccess("");
+};
 
   // =========================================
   // Load Classes
@@ -119,6 +163,58 @@ export default function QrAttendancePage() {
     loadClasses();
   }, []);
 
+  useEffect(() => {
+  if (!selectedClassId) {
+    setDailyCollection(null);
+    setDailyShare(null);
+    setClassPercentage(20);
+    setDailyError("");
+    return;
+  }
+
+  let cancelled = false;
+
+  const loadDailyData = async () => {
+    setLoadingDaily(true);
+    setDailyError("");
+    setDailyCollection(null);
+    setDailyShare(null);
+
+    try {
+      const [collectionResponse, shareResponse] = await Promise.all([
+        api.get<DailyCollection>(
+          `/api/class-daily-collections/${selectedClassId}`
+        ),
+        api.get<DailyRevenueShare>(
+          `/api/class-daily-revenue-shares/${selectedClassId}`
+        ),
+      ]);
+
+      if (cancelled) return;
+
+      setDailyCollection(collectionResponse.data);
+      setDailyShare(shareResponse.data);
+      setClassPercentage(
+        Number(shareResponse.data.classPercentage)
+      );
+    } catch {
+      if (!cancelled) {
+        setDailyError("Failed to load today's collection.");
+      }
+    } finally {
+      if (!cancelled) {
+        setLoadingDaily(false);
+      }
+    }
+  };
+
+  loadDailyData();
+
+  return () => {
+    cancelled = true;
+  };
+}, [selectedClassId]);
+
   // =========================================
   // Cleanup Camera
   // =========================================
@@ -140,6 +236,7 @@ export default function QrAttendancePage() {
   const startScanner = async () => {
     clearMessages();
     setScanResult(null);
+    setCombinedSuccess("");
 
     if (!selectedClassId) {
       setError("Please select a class first.");
@@ -343,10 +440,11 @@ export default function QrAttendancePage() {
     setScanResult(null);
 
     try {
-      const response = await api.post("/api/attendance/qr", {
-        qrToken: decodedText.trim(),
-        classId: Number(selectedClassId),
-      });
+     const response = await api.post("/api/attendance/qr", {
+  qrToken: decodedText.trim(),
+  classId: Number(selectedClassId),
+  sessionType: sessionType,
+});
 
       const result = response.data as ScanResult;
 
@@ -354,9 +452,18 @@ export default function QrAttendancePage() {
 
       const studentName = result.attendance?.studentName ?? "Student";
 
-      setSuccess(
-        `${studentName} - ${result.message ?? "Attendance marked successfully."}`,
-      );
+      const alreadyMarked =
+  result.message?.toLowerCase().includes("already marked") ?? false;
+
+if (alreadyMarked) {
+  setWarning(
+    `${studentName} - Attendance already marked for this class today!`
+  );
+} else {
+  setSuccess(
+  `${studentName} - ${result.attendance.sessionType} attendance recorded.`
+);
+}
 
       await stopScanner();
     } catch (err: any) {
@@ -423,21 +530,45 @@ export default function QrAttendancePage() {
         year,
         month,
       });
+      await refreshDailyCollection(scanResult.classDetails.id);
 
-      setScanResult((current) =>
-        current
-          ? {
-              ...current,
-              payment: {
-                ...current.payment,
-                isPaid: true,
-                amountPaid: response.data.amount ?? monthlyFee,
-                paidAt: response.data.paidAt ?? new Date().toISOString(),
-              },
-            }
-          : current,
-      );
-      setPaymentSuccess(`Payment recorded for ${feeMonthName}.`);
+      setScanResult((current) => {
+  if (!current) return current;
+
+  const paidMonthValue = `${year}-${String(month).padStart(2, "0")}`;
+
+  return {
+    ...current,
+    payment: {
+      ...current.payment,
+      isPaid: true,
+      amountPaid: response.data.amount ?? monthlyFee,
+      paidAt: response.data.paidAt ?? new Date().toISOString(),
+
+      // Add current month to paid months
+      paidMonths: [
+        ...new Set([
+          ...(current.payment.paidMonths ?? []),
+          paidMonthValue,
+        ]),
+      ],
+
+      // Remove current month from unpaid months, if present
+      unpaidMonths: (current.payment.unpaidMonths ?? []).filter(
+        (item) => item !== paidMonthValue
+      ),
+    },
+  };
+});
+      if (success && !warning) {
+  setSuccess("");
+  setPaymentSuccess("");
+  setCombinedSuccess(
+    `${scanResult.student.firstName} - Attendance and ${feeMonthName} fee payment recorded successfully.`
+  );
+} else {
+  setPaymentSuccess(`Payment recorded for ${feeMonthName}.`);
+}
     } catch (err: any) {
       console.error("QR Fee Payment Error:", err);
 
@@ -452,6 +583,159 @@ export default function QrAttendancePage() {
       setRecordingPayment(false);
     }
   };
+
+  const handlePreviousMonthPayment = async (monthValue: string) => {
+  if (!scanResult || recordingPayment) return;
+
+  const [year, month] = monthValue.split("-").map(Number);
+
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    month < 1 ||
+    month > 12
+  ) {
+    setError("Invalid payment month.");
+    return;
+  }
+
+  const monthName = new Date(
+    Date.UTC(year, month - 1, 1)
+  ).toLocaleDateString("en", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+
+  const confirmed = window.confirm(
+    `Record previous fee payment?\n\n` +
+    `Student: ${scanResult.student.firstName} ${scanResult.student.lastName ?? ""}\n` +
+    `Class: ${scanResult.classDetails.name}\n` +
+    `Month: ${monthName}\n` +
+    `Amount: LKR ${Number(scanResult.payment.monthlyFee).toLocaleString()}`
+  );
+
+  if (!confirmed) return;
+
+  setRecordingPayment(true);
+  setPaymentSuccess("");
+  setError("");
+
+  try {
+    await api.post("/api/payments", {
+      studentId: scanResult.student.id,
+      classId: scanResult.classDetails.id,
+      year,
+      month,
+    });
+    await refreshDailyCollection(scanResult.classDetails.id);
+
+    setScanResult((current) =>
+      current
+        ? {
+            ...current,
+            payment: {
+              ...current.payment,
+              unpaidMonths:
+                current.payment.unpaidMonths?.filter(
+                  (item) => item !== monthValue
+                ) ?? [],
+
+                paidMonths: [
+  ...new Set([
+    ...(current.payment.paidMonths ?? []),
+    monthValue,
+  ]),
+],
+            },
+          }
+        : current
+    );
+
+    setPaymentSuccess(
+      `${monthName} fee payment recorded successfully.`
+    );
+  } catch (err: any) {
+    const responseData = err.response?.data;
+
+    const message =
+      typeof responseData === "string"
+        ? responseData
+        : responseData?.message || "Failed to record previous payment.";
+
+    setError(message);
+  } finally {
+    setRecordingPayment(false);
+  }
+};
+
+const refreshDailyCollection = async (classId: number) => {
+  try {
+    const response = await api.get<DailyCollection>(
+      `/api/class-daily-collections/${classId}`
+    );
+
+    setDailyCollection((current) => {
+      if (
+        selectedClassId !== String(classId)
+      ) {
+        return current;
+      }
+
+      return response.data;
+    });
+  } catch {
+    setDailyError("Failed to refresh daily collection.");
+  }
+};
+
+const handleSaveDailyShare = async () => {
+  if (
+  !Number.isFinite(classPercentage) ||
+  classPercentage < 0 ||
+  classPercentage > 100 ||
+  Math.round(classPercentage * 100) !== classPercentage * 100
+) {
+  setDailyError(
+    "Percentage must be between 0 and 100 with maximum 2 decimal places."
+  );
+  return;
+}
+
+  setSavingShare(true);
+  setDailyError("");
+  setShareSuccess("");
+
+  try {
+    const response = await api.put<DailyRevenueShare>(
+      `/api/class-daily-revenue-shares/${selectedClassId}`,
+      {
+        classPercentage,
+      }
+    );
+
+    setDailyShare(response.data);
+    setClassPercentage(
+      Number(response.data.classPercentage)
+    );
+    setShareSuccess("Daily percentages saved successfully.");
+  } catch {
+    setDailyError("Failed to save daily percentages.");
+  } finally {
+    setSavingShare(false);
+  }
+};
+
+const handleSessionTypeChange = async (
+  type: "Regular" | "Extra"
+) => {
+  if (processing || scanning) return;
+
+  setSessionType(type);
+  setSelectedClassId("");
+  setScanResult(null);
+  clearMessages();
+};
 
   // =========================================
   // Class Change
@@ -495,6 +779,36 @@ export default function QrAttendancePage() {
           Back
         </button>
       </div>
+
+      <div className="mb-5 rounded-2xl bg-white p-6 shadow-sm">
+  <h2 className="mb-4 text-lg font-bold text-gray-900">
+    Select Attendance Type
+  </h2>
+
+  <div className="grid grid-cols-2 gap-3">
+    {(["Regular", "Extra"] as const).map((type) => (
+      <button
+        key={type}
+        type="button"
+        disabled={scanning || processing}
+        onClick={() => handleSessionTypeChange(type)}
+        className={`rounded-xl border-2 px-4 py-4 font-semibold transition disabled:opacity-50 ${
+          sessionType === type
+            ? "border-blue-600 bg-blue-600 text-white"
+            : "border-gray-300 bg-white text-gray-700"
+        }`}
+      >
+        {type} Class
+      </button>
+    ))}
+  </div>
+
+  <p className="mt-3 text-sm text-gray-600">
+    {sessionType === "Regular"
+      ? "Regular attendance counts towards the fee warning."
+      : "Extra attendance is saved without increasing the regular attendance count."}
+  </p>
+</div>
 
       {/* Class Selection */}
 
@@ -588,20 +902,229 @@ export default function QrAttendancePage() {
           <div id="qr-reader" className="overflow-hidden rounded-xl" />
         </div>
 
+        
+{/* Daily Collection and Revenue Sharing */}
+{selectedClassId && (
+  <div className="mt-6 rounded-2xl border border-blue-100 bg-white p-4 shadow-sm sm:p-6">
+    <h2 className="text-xl font-bold text-gray-900">
+      Today's Class Collection
+    </h2>
+
+    {loadingDaily ? (
+      <p className="mt-4 text-sm text-gray-500">
+        Loading daily collection...
+      </p>
+    ) : (
+      <>
+        {dailyError && (
+          <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            {dailyError}
+          </p>
+        )}
+
+        {shareSuccess && (
+          <p className="mt-3 rounded-lg bg-green-50 p-3 text-sm text-green-700">
+            {shareSuccess}
+          </p>
+        )}
+
+        {dailyCollection && dailyShare && (
+          <>
+            <p className="mt-2 text-sm text-gray-500">
+              Date: {dailyCollection.date}
+            </p>
+
+            <div className="mt-4 rounded-xl bg-blue-600 p-5 text-white">
+              <p className="text-sm text-blue-100">
+                Total Collected Today
+              </p>
+
+              <p className="mt-2 text-3xl font-bold">
+                LKR{" "}
+                {Number(
+                  dailyCollection.totalCollection
+                ).toLocaleString("en-LK", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </p>
+
+              <p className="mt-2 text-sm text-blue-100">
+                {dailyCollection.paymentCount} Payments
+              </p>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-xl bg-indigo-50 p-4">
+                <p className="text-sm font-medium text-indigo-700">
+                  Class / Institute Share
+                </p>
+
+                <p className="mt-2 text-2xl font-bold text-indigo-900">
+                  LKR{" "}
+                  {(
+                    Number(dailyCollection.totalCollection) *
+                    classPercentage /
+                    100
+                  ).toLocaleString("en-LK", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </p>
+
+                <p className="mt-1 font-semibold text-indigo-700">
+                  {classPercentage}%
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-green-50 p-4">
+                <p className="text-sm font-medium text-green-700">
+                  Teacher / Sir Share
+                </p>
+
+                <p className="mt-2 text-2xl font-bold text-green-900">
+                  LKR{" "}
+                  {(
+                    Number(dailyCollection.totalCollection) *
+                    (100 - classPercentage) /
+                    100
+                  ).toLocaleString("en-LK", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </p>
+
+                <p className="mt-1 font-semibold text-green-700">
+                  {Number((100 - classPercentage).toFixed(2))}%
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-gray-200 p-4">
+              <h3 className="font-bold text-gray-900">
+                Daily Percentage Settings
+              </h3>
+
+              <label
+                htmlFor="class-percentage"
+                className="mt-4 block text-sm font-medium text-gray-700"
+              >
+                Class / Institute Percentage
+              </label>
+
+              <input
+                id="class-percentage"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={classPercentage}
+                onChange={(e) => {
+                  setClassPercentage(Number(e.target.value));
+                  setShareSuccess("");
+                }}
+                className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-900"
+              />
+
+              <p className="mt-3 text-sm text-gray-600">
+                Teacher Percentage:{" "}
+                <strong>
+                  {Number((100 - classPercentage).toFixed(2))}%
+                </strong>
+              </p>
+
+              <button
+                type="button"
+                onClick={handleSaveDailyShare}
+                disabled={savingShare || loadingDaily}
+                className="mt-4 w-full rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {savingShare
+                  ? "Saving..."
+                  : "Save Today's Percentages"}
+              </button>
+
+              <p className="mt-3 text-xs text-gray-500">
+                These percentages apply only to the selected
+                class and today's collection.
+              </p>
+
+              {dailyShare.updatedBy && (
+                <p className="mt-2 text-xs text-gray-500">
+                  Last saved by: {dailyShare.updatedBy}
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </>
+    )}
+  </div>
+)}
+
+
         {processing && (
           <div className="mt-5 rounded-lg bg-blue-50 p-4 text-blue-700">
             Processing QR code...
           </div>
         )}
 
-        {success && (
-          <div className="mt-5 rounded-lg border border-green-200 bg-green-50 p-4 font-medium text-green-700">
-            ✓ {success}
-          </div>
-        )}
+       {success && (
+  <div className="mt-5 flex items-start gap-3 rounded-xl border border-green-300 bg-green-50 p-4">
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-600 text-xl font-bold text-white">
+      ✓
+    </span>
+
+    <div>
+      <p className="font-bold text-green-800">
+        Attendance Marked Successfully!
+      </p>
+
+      <p className="mt-1 text-sm text-green-700">
+        {success}
+      </p>
+    </div>
+  </div>
+)}
+
+{combinedSuccess && (
+  <div className="mt-5 flex items-start gap-3 rounded-xl border border-purple-300 bg-purple-50 p-4">
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-purple-600 text-xl font-bold text-white">
+      ✓✓
+    </span>
+
+    <div>
+      <p className="font-bold text-purple-800">
+        Attendance Marked + Fee Paid!
+      </p>
+
+      <p className="mt-1 text-sm text-purple-700">
+        {combinedSuccess}
+      </p>
+    </div>
+  </div>
+)}
+
+{paymentSuccess && (
+  <div className="mt-5 flex items-start gap-3 rounded-xl border border-blue-300 bg-blue-50 p-4">
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xl font-bold text-white">
+      ✔
+    </span>
+
+    <div>
+      <p className="font-bold text-blue-800">
+        Fee Paid Successfully!
+      </p>
+
+      <p className="mt-1 text-sm text-blue-700">
+        {paymentSuccess}
+      </p>
+    </div>
+  </div>
+)}
 
         {warning && (
-          <div className="mt-5 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-yellow-800">
+          <div className="mt-5 rounded-lg border border-red-300 bg-red-50 p-4 font-semibold text-red-700">
             ⚠ {warning}
           </div>
         )}
@@ -618,7 +1141,183 @@ export default function QrAttendancePage() {
 
         {scanResult && (
           <div className="mt-6 space-y-5">
-            {/* Student Details */}
+{/* Main Student Summary Card */}
+<div className="overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm">
+  <div className="bg-blue-600 px-5 py-5 text-white">
+    <p className="text-sm font-medium text-blue-100">
+      Student Information
+    </p>
+
+    <h2 className="mt-1 text-2xl font-bold">
+      {scanResult.student.firstName}{" "}
+      {scanResult.student.lastName ?? ""}
+    </h2>
+
+    <p className="mt-1 text-sm text-blue-100">
+      ID: {scanResult.student.studentCode}
+    </p>
+  </div>
+
+  <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
+    <div>
+      <p className="text-sm text-gray-500">Class</p>
+      <p className="font-bold text-gray-900">
+        {scanResult.classDetails.name}
+      </p>
+    </div>
+
+    <div>
+      <p className="text-sm text-gray-500">Teacher</p>
+      <p className="font-bold text-gray-900">
+        {scanResult.classDetails.teacherName || "-"}
+      </p>
+    </div>
+
+    <div>
+      <p className="text-sm text-gray-500">Joined Date</p>
+      <p className="font-bold text-gray-900">
+        {scanResult.attendanceSummary?.joinedDate || "-"}
+      </p>
+    </div>
+
+    <div>
+  <p className="text-sm text-gray-500">
+    Attendance This Month
+  </p>
+
+  <p className="font-bold text-gray-900">
+    {scanResult.attendanceSummary?.daysAttendedThisMonth ?? 0} Days
+  </p>
+
+  <p className="mt-1 text-sm text-blue-700">
+    Regular:{" "}
+    {scanResult.attendanceSummary?.regularDaysAttendedThisMonth ?? 0}
+  </p>
+
+  <p className="text-sm text-orange-700">
+    Extra:{" "}
+    {Math.max(
+      0,
+      (scanResult.attendanceSummary?.daysAttendedThisMonth ?? 0) -
+        (scanResult.attendanceSummary?.regularDaysAttendedThisMonth ?? 0)
+    )}
+  </p>
+</div>
+  </div>
+
+  <div className="grid grid-cols-2 gap-3 border-t border-gray-100 p-5">
+    <div className="rounded-xl bg-green-50 p-4 text-center">
+      <p className="text-sm font-medium text-green-700">
+        Paid Months
+      </p>
+
+      <p className="mt-2 text-3xl font-bold text-green-700">
+        {scanResult.payment.paidMonths?.length ?? 0}
+      </p>
+    </div>
+
+    <div className="rounded-xl bg-red-50 p-4 text-center">
+      <p className="text-sm font-medium text-red-700">
+        Unpaid Months
+      </p>
+
+      <p className="mt-2 text-3xl font-bold text-red-700">
+        {(scanResult.payment.unpaidMonths?.length ?? 0) +
+          (scanResult.payment.isPaid ? 0 : 1)}
+      </p>
+    </div>
+  </div>
+
+  <div className="border-t border-gray-100 px-5 py-4">
+    <h3 className="mb-3 font-bold text-gray-900">
+      Monthly Payment History
+    </h3>
+
+    <div className="space-y-2">
+      {[
+        ...(scanResult.payment.paidMonths ?? []).map((month) => ({
+          month,
+          paid: true,
+        })),
+        ...(scanResult.payment.unpaidMonths ?? []).map((month) => ({
+          month,
+          paid: false,
+        })),
+        ...(!scanResult.payment.isPaid
+          ? [{
+              month: `${scanResult.payment.year}-${String(
+                scanResult.payment.month
+              ).padStart(2, "0")}`,
+              paid: false,
+            }]
+          : []),
+      ]
+        .sort((a, b) => a.month.localeCompare(b.month))
+        .map((item) => {
+          const [year, month] = item.month.split("-").map(Number);
+
+          const monthName = new Date(
+            Date.UTC(year, month - 1, 1)
+          ).toLocaleDateString("en", {
+            month: "long",
+            year: "numeric",
+            timeZone: "UTC",
+          });
+
+          return (
+            <div
+              key={item.month}
+              className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3"
+            >
+              <span className="text-sm font-semibold text-gray-800">
+                {monthName}
+              </span>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+  <span
+    className={`rounded-full px-3 py-1 text-xs font-bold ${
+      item.paid
+        ? "bg-green-100 text-green-700"
+        : "bg-red-100 text-red-700"
+    }`}
+  >
+    {item.paid ? "✓ Paid" : "Unpaid"}
+  </span>
+
+  {!item.paid && (
+    <button
+      type="button"
+      onClick={() => {
+        const isCurrentMonth =
+          year === scanResult.payment.year &&
+          month === scanResult.payment.month;
+
+        if (isCurrentMonth) {
+          handleRecordPayment();
+        } else {
+          handlePreviousMonthPayment(item.month);
+        }
+      }}
+      disabled={recordingPayment}
+      className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+    >
+      {recordingPayment ? "Processing..." : "Record Payment"}
+    </button>
+  )}
+</div>
+            </div>
+          );
+        })}
+    </div>
+  </div>
+</div>
+
+            <details className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+  <summary className="cursor-pointer select-none bg-gray-50 px-5 py-4 text-lg font-bold text-gray-900 hover:bg-gray-100">
+    More Details — Student & Class
+  </summary>
+
+  <div className="space-y-5 p-4">
+    {/* Student Details */}
             <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
               <div className="border-b border-gray-200 px-5 py-4">
                 <h3 className="text-lg font-bold text-gray-900">
@@ -693,15 +1392,49 @@ export default function QrAttendancePage() {
                 ))}
               </div>
             </div>
+              </div>
+</details>
+
+{feePaymentRequired && (
+  <div className="rounded-xl border-2 border-red-300 bg-red-50 p-5">
+    <div className="flex items-start gap-3">
+      <span className="text-3xl">🔴</span>
+
+      <div>
+        <h3 className="text-lg font-bold text-red-800">
+          Class Fee Payment Required!
+        </h3>
+
+        <p className="mt-2 text-sm text-red-700">
+  This student has attended{" "}
+  <strong>
+    {scanResult.attendanceSummary?.regularDaysAttendedThisMonth ?? 0}
+  </strong>{" "}
+  Regular classes this month, but the class fee has not been paid.
+</p>
+
+        <p className="mt-2 font-semibold text-red-800">
+          Amount Due: LKR{" "}
+          {Math.max(
+            0,
+            Number(scanResult.payment.monthlyFee) -
+              Number(scanResult.payment.amountPaid)
+          ).toLocaleString()}
+        </p>
+      </div>
+    </div>
+  </div>
+)}
+
 
             {/* Payment Status */}
-            <div
+            {/* <div
               className={`overflow-hidden rounded-2xl border ${
                 scanResult.payment.isPaid
                   ? "border-green-200 bg-green-50"
                   : "border-amber-200 bg-amber-50"
               }`}
-            >
+            > */}
               <div className="flex items-center justify-between gap-3 border-b border-black/5 px-5 py-4">
                 <div>
                   <h3 className="text-lg font-bold text-gray-900">
@@ -757,10 +1490,22 @@ export default function QrAttendancePage() {
                 </div>
 
                 {paymentSuccess && (
-                  <p className="border-t border-black/5 py-3.5 text-sm font-semibold text-green-700">
-                    ✓ {paymentSuccess}
-                  </p>
-                )}
+  <div className="my-4 flex items-start gap-3 rounded-xl border border-blue-300 bg-blue-50 p-4">
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xl font-bold text-white">
+      ✔
+    </span>
+
+    <div>
+      <p className="font-bold text-blue-800">
+        Fee Paid Successfully!
+      </p>
+
+      <p className="mt-1 text-sm text-blue-700">
+        {paymentSuccess}
+      </p>
+    </div>
+  </div>
+)}
 
                 {!scanResult.payment.isPaid && (
                   <button
@@ -773,74 +1518,19 @@ export default function QrAttendancePage() {
                   </button>
                 )}
               </div>
-            </div>
+            {/* </div> */}
 
-            {scanResult.attendanceSummary && (
-              <div className="overflow-hidden rounded-2xl border border-blue-200 bg-blue-50">
-                <div className="border-b border-blue-200 px-5 py-4">
-                  <h3 className="text-lg font-bold text-blue-900">
-                    Class & Attendance Summary
-                  </h3>
-                </div>
 
-                <div className="px-5">
-                  <div className="flex items-center justify-between gap-5 border-b border-blue-100 py-3.5">
-                    <span className="text-sm font-medium text-gray-600">
-                      Joined Date
-                    </span>
-                    <span className="text-sm font-bold text-gray-900">
-                      {scanResult.attendanceSummary.joinedDate || "-"}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-5 py-3.5">
-                    <span className="text-sm font-medium text-gray-600">
-                      Days Attended This Month
-                    </span>
-                    <span className="rounded-full bg-blue-600 px-3 py-1 text-sm font-bold text-white">
-                      {scanResult.attendanceSummary.daysAttendedThisMonth} Days
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Attendance Details */}
-            <div className="overflow-hidden rounded-2xl border border-green-200 bg-green-50">
-              <div className="border-b border-green-200 px-5 py-4">
-                <h3 className="text-lg font-bold text-green-800">
-                  ✓ Attendance Marked
-                </h3>
-              </div>
-
-              <div className="px-5">
-                <div className="flex items-center justify-between gap-5 border-b border-green-200 py-3.5">
-                  <span className="text-sm font-medium text-gray-600">
-                    Date
-                  </span>
-
-                  <span className="text-sm font-bold text-gray-900">
-                    {scanResult.attendance.attendanceDate}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-5 py-3.5">
-                  <span className="text-sm font-medium text-gray-600">
-                    Class
-                  </span>
-
-                  <span className="text-right text-sm font-bold text-gray-900">
-                    {scanResult.attendance.className}
-                  </span>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
         {/* Scan Another Student */}
 
-        {(success || warning || error) && !scanning && selectedClassId && (
+       {(success || warning || error || combinedSuccess || paymentSuccess) &&
+  !scanning &&
+  selectedClassId && (
           <button
             type="button"
             onClick={startScanner}

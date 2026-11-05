@@ -210,14 +210,27 @@ export default function ClassesPage() {
                     </span>
                   </td>
 
-                  <td className="px-6 py-4 text-center">
-                    <Link
-                      href={`/dashboard/classes/${classItem.id}`}
-                      className="inline-block rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-800"
-                    >
-                      View
-                    </Link>
-                  </td>
+                  
+<td className="px-6 py-4 text-center">
+  <div className="flex items-center justify-center gap-2">
+    <Link
+      href={`/dashboard/classes/${classItem.id}`}
+      className="inline-block rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-800"
+    >
+      View
+    </Link>
+
+    {isAdmin && (
+      <Link
+        href={`/dashboard/classes/${classItem.id}/fees`}
+        className="inline-block rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-800"
+      >
+        Manage Fee
+      </Link>
+    )}
+  </div>
+</td>
+
                 </tr>
               ))}
 

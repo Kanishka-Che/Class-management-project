@@ -7,6 +7,7 @@ using ClassManagement.Api.Services;
 using ClassManagement.Api.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddScoped<ClassFeeService>();
 
 // =========================================
 // Database - PostgreSQL
