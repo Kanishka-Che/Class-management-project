@@ -16,13 +16,16 @@ namespace ClassManagement.Api.Controllers
     {
         private readonly AppDbContext _context;
 private readonly ISmsService _smsService;
+private readonly ClassFeeService _classFeeService;
 
 public PaymentsController(
     AppDbContext context,
-    ISmsService smsService)
+    ISmsService smsService,
+    ClassFeeService classFeeService)
 {
     _context = context;
     _smsService = smsService;
+    _classFeeService = classFeeService;
 }
 
 private async Task<bool> CanAccessClass(int classId)
@@ -134,6 +137,27 @@ public async Task<IActionResult> CreatePayment(
         );
     }
 
+    // =========================================
+// Get historical fee for requested month
+// =========================================
+
+var historicalFee = await _classFeeService
+    .GetMonthlyFeeAsync(
+        request.ClassId,
+        request.Year,
+        request.Month
+    );
+
+if (historicalFee == null)
+{
+    return BadRequest(new
+    {
+        message =
+            "Historical monthly fee is not configured " +
+            "for this class and month."
+    });
+}
+
     // Backend controls Amount and PaidAt
     var payment = new Payment
     {
@@ -141,7 +165,7 @@ public async Task<IActionResult> CreatePayment(
         ClassId = request.ClassId,
         Year = request.Year,
         Month = request.Month,
-        Amount = classItem.MonthlyFee,
+       Amount = historicalFee.Value,
         PaidAt = DateTime.UtcNow
     };
 
@@ -166,10 +190,19 @@ if (!string.IsNullOrWhiteSpace(smsPhoneNumber))
         $"Month: {request.Month}/{request.Year}, " +
         $"Amount: LKR {payment.Amount:N2}. Thank you.";
 
+   try
+{
     await _smsService.SendSmsAsync(
         smsPhoneNumber,
         smsMessage
     );
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine(
+        $"Payment {payment.Id} saved, but SMS failed: {ex.Message}"
+    );
+}
 }
 
     return Ok(new PaymentResponse

@@ -1,3 +1,4 @@
+
 namespace ClassManagement.Api.Models
 {
     public class Attendance
@@ -11,6 +12,9 @@ namespace ClassManagement.Api.Models
         public DateOnly AttendanceDate { get; set; }
 
         public DateTime CheckInTime { get; set; } = DateTime.UtcNow;
+
+        // Regular or Extra
+        public string SessionType { get; set; } = "Regular";
 
         public Student? Student { get; set; }
 

@@ -122,12 +122,13 @@ public async Task<IActionResult> MarkAttendance(
 
     // Server creates attendance record
     var attendance = new Attendance
-    {
-        StudentId = request.StudentId,
-        ClassId = request.ClassId,
-        AttendanceDate = today,
-        CheckInTime = DateTime.UtcNow
-    };
+{
+    StudentId = request.StudentId,
+    ClassId = request.ClassId,
+    AttendanceDate = today,
+    CheckInTime = DateTime.UtcNow,
+    SessionType = request.SessionType
+};
 
     _context.Attendances.Add(attendance);
     await _context.SaveChangesAsync();
@@ -145,7 +146,9 @@ public async Task<IActionResult> MarkAttendance(
     ClassName = classItem.Name,
 
     AttendanceDate = attendance.AttendanceDate,
-    CheckInTime = attendance.CheckInTime
+    CheckInTime = attendance.CheckInTime,
+
+     SessionType = attendance.SessionType
 });
 }
 
@@ -273,27 +276,89 @@ public async Task<IActionResult> MarkAttendanceByQr(
         p.Year == feeMonth.Year && p.Month == feeMonth.Month);
 
     var attendance = existingAttendance;
-    if (attendance == null)
-    {
-        attendance = new Attendance
-        {
-            StudentId = student.Id,
-            ClassId = request.ClassId,
-            AttendanceDate = today,
-            CheckInTime = DateTime.UtcNow
-        };
+    // Current month payment status
+var currentMonthPayment = paymentsSinceJoining
+    .FirstOrDefault(p =>
+        p.Year == sriLankaNow.Year &&
+        p.Month == sriLankaNow.Month);
 
-        _context.Attendances.Add(attendance);
-        await _context.SaveChangesAsync();
+// Paid months since student joined this class
+var paidMonths = paymentsSinceJoining
+    .Where(p =>
+        p.Year > joinedFeeMonth.Year ||
+        (p.Year == joinedFeeMonth.Year &&
+         p.Month >= joinedFeeMonth.Month))
+    .Where(p =>
+        p.Year < currentFeeMonth.Year ||
+        (p.Year == currentFeeMonth.Year &&
+         p.Month <= currentFeeMonth.Month))
+    .Select(p => new DateOnly(p.Year, p.Month, 1))
+    .Distinct()
+    .OrderBy(m => m)
+    .Select(m => m.ToString("yyyy-MM"))
+    .ToList();
+
+// Previous unpaid months
+var previousUnpaidMonths = new List<string>();
+
+var checkMonth = joinedFeeMonth;
+
+while (checkMonth < currentFeeMonth)
+{
+    var hasPaid = paymentsSinceJoining.Any(p =>
+        p.Year == checkMonth.Year &&
+        p.Month == checkMonth.Month);
+
+    if (!hasPaid)
+    {
+        previousUnpaidMonths.Add(
+            checkMonth.ToString("yyyy-MM")
+        );
     }
 
-    var monthStart = new DateOnly(sriLankaNow.Year, sriLankaNow.Month, 1);
-    var daysAttendedThisMonth = await _context.Attendances
-        .CountAsync(a =>
-            a.StudentId == student.Id &&
-            a.ClassId == request.ClassId &&
-            a.AttendanceDate >= monthStart &&
-            a.AttendanceDate <= today);
+    checkMonth = checkMonth.AddMonths(1);
+}
+    if (attendance == null)
+{
+    attendance = new Attendance
+    {
+        StudentId = student.Id,
+        ClassId = request.ClassId,
+        AttendanceDate = today,
+        CheckInTime = DateTime.UtcNow,
+        SessionType = request.SessionType
+    };
+
+    _context.Attendances.Add(attendance);
+    await _context.SaveChangesAsync();
+}
+
+    var monthStart = new DateOnly(
+    sriLankaNow.Year,
+    sriLankaNow.Month,
+    1
+);
+
+var nextMonthStart = monthStart.AddMonths(1);
+
+// Regular + Extra attendance count
+var daysAttendedThisMonth = await _context.Attendances
+    .CountAsync(a =>
+        a.StudentId == student.Id &&
+        a.ClassId == request.ClassId &&
+        a.AttendanceDate >= monthStart &&
+        a.AttendanceDate < nextMonthStart
+    );
+
+// Regular attendance count only
+var regularDaysAttendedThisMonth = await _context.Attendances
+    .CountAsync(a =>
+        a.StudentId == student.Id &&
+        a.ClassId == request.ClassId &&
+        a.SessionType == "Regular" &&
+        a.AttendanceDate >= monthStart &&
+        a.AttendanceDate < nextMonthStart
+    );
 
     return Ok(new
     {
@@ -314,7 +379,8 @@ public async Task<IActionResult> MarkAttendanceByQr(
             ClassName = classItem.Name,
 
             AttendanceDate = attendance.AttendanceDate,
-            CheckInTime = attendance.CheckInTime
+            CheckInTime = attendance.CheckInTime,
+            SessionType = attendance.SessionType 
         },
 
         student = new
@@ -341,24 +407,28 @@ public async Task<IActionResult> MarkAttendanceByQr(
         },
 
         payment = new
-        {
-            Year = feeMonth.Year,
-            Month = feeMonth.Month,
+{
+    Year = sriLankaNow.Year,
+    Month = sriLankaNow.Month,
 
-            IsPaid = payment != null,
+    IsPaid = currentMonthPayment != null,
 
-            AmountPaid = payment?.Amount ?? 0,
+    AmountPaid = currentMonthPayment?.Amount ?? 0,
 
-            MonthlyFee = classItem.MonthlyFee,
+    MonthlyFee = classItem.MonthlyFee,
 
-            PaidAt = payment?.PaidAt
-        },
+    PaidAt = currentMonthPayment?.PaidAt,
+
+    UnpaidMonths = previousUnpaidMonths,
+PaidMonths = paidMonths
+},
 
         attendanceSummary = new
-            {
-                joinedDate = enrollment.JoinedDate.ToString("yyyy-MM-dd"),
-                daysAttendedThisMonth = daysAttendedThisMonth
-            }
+{
+    joinedDate = enrollment.JoinedDate.ToString("yyyy-MM-dd"),
+    daysAttendedThisMonth = daysAttendedThisMonth,
+    regularDaysAttendedThisMonth = regularDaysAttendedThisMonth
+}
     });
 }
 
@@ -407,8 +477,9 @@ if (!await CanAccessClass(classId))
         ClassId = a.ClassId,
         ClassName = a.Class!.Name,
 
-        AttendanceDate = a.AttendanceDate,
-        CheckInTime = a.CheckInTime
+       AttendanceDate = a.AttendanceDate,
+CheckInTime = a.CheckInTime,
+SessionType = a.SessionType
     })
     .ToListAsync();
 
@@ -456,7 +527,8 @@ public async Task<IActionResult> GetStudentAttendanceHistory(
                 ClassName = a.Class!.Name,
 
                 AttendanceDate = a.AttendanceDate,
-                CheckInTime = a.CheckInTime
+                CheckInTime = a.CheckInTime,
+                SessionType = a.SessionType
             })
             .ToListAsync();
 
@@ -520,7 +592,8 @@ public async Task<IActionResult> GetStudentAttendanceHistory(
             ClassName = a.Class!.Name,
 
             AttendanceDate = a.AttendanceDate,
-            CheckInTime = a.CheckInTime
+            CheckInTime = a.CheckInTime,
+            SessionType = a.SessionType
         })
         .ToListAsync();
 

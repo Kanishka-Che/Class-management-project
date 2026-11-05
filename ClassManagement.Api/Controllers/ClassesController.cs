@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using ClassManagement.Api.DTOs;
 using System.Security.Claims;
+using ClassManagement.Api.Models;
 
 namespace ClassManagement.Api.Controllers
 {
@@ -207,9 +208,35 @@ public async Task<ActionResult<ClassResponse>> GetClassById(int id)
                     UpdatedAt = DateTime.UtcNow
                 };
 
-            _context.Classes.Add(classItem);
+           
+_context.Classes.Add(classItem);
 
-            await _context.SaveChangesAsync();
+// Sri Lanka local date
+var sriLankaTimeZone =
+    TimeZoneInfo.FindSystemTimeZoneById(
+        "Asia/Colombo"
+    );
+
+var sriLankaNow =
+    TimeZoneInfo.ConvertTimeFromUtc(
+        DateTime.UtcNow,
+        sriLankaTimeZone
+    );
+
+// Initial monthly fee history
+classItem.MonthlyFeeHistory.Add(
+    new ClassMonthlyFee
+    {
+        EffectiveYear = sriLankaNow.Year,
+        EffectiveMonth = sriLankaNow.Month,
+        Amount = request.MonthlyFee,
+        CreatedAt = DateTime.UtcNow
+    }
+);
+
+// Save class and fee history together
+await _context.SaveChangesAsync();
+
 
             return Ok(
                 ToClassResponse(classItem)
@@ -221,55 +248,135 @@ public async Task<ActionResult<ClassResponse>> GetClassById(int id)
         // Update class
         // Admin only
         // =========================================
-        [Authorize(Roles = "Admin")]
-        [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateClass(
-            int id,
-            UpdateClassRequest request)
+     
+[Authorize(Roles = "Admin")]
+[HttpPut("{id}")]
+public async Task<IActionResult> UpdateClass(
+    int id,
+    UpdateClassRequest request)
+{
+    if (string.IsNullOrWhiteSpace(request.Name))
+        return BadRequest("Class name is required.");
+
+    if (request.MonthlyFee < 0)
+        return BadRequest("Monthly fee cannot be negative.");
+
+    var classItem = await _context.Classes.FindAsync(id);
+
+    if (classItem == null)
+        return NotFound("Class not found.");
+
+    var sriLankaZone =
+        TimeZoneInfo.FindSystemTimeZoneById("Asia/Colombo");
+
+    var now = TimeZoneInfo.ConvertTimeFromUtc(
+        DateTime.UtcNow,
+        sriLankaZone
+    );
+
+    var currentYear = now.Year;
+    var currentMonth = now.Month;
+
+    // Find fee effective for the current month.
+    var currentFeeRecord = await _context.ClassMonthlyFees
+        .Where(f =>
+            f.ClassId == id &&
+            (
+                f.EffectiveYear < currentYear ||
+                (f.EffectiveYear == currentYear &&
+                 f.EffectiveMonth <= currentMonth)
+            ))
+        .OrderByDescending(f => f.EffectiveYear)
+        .ThenByDescending(f => f.EffectiveMonth)
+        .FirstOrDefaultAsync();
+
+    var currentEffectiveFee =
+        currentFeeRecord?.Amount ?? classItem.MonthlyFee;
+
+    var feeChanged =
+        request.MonthlyFee != currentEffectiveFee;
+
+    if (feeChanged)
+    {
+        // Prevent changing a fee that affects paid months.
+        var nextChange = await _context.ClassMonthlyFees
+            .AsNoTracking()
+            .Where(f =>
+                f.ClassId == id &&
+                (
+                    f.EffectiveYear > currentYear ||
+                    (f.EffectiveYear == currentYear &&
+                     f.EffectiveMonth > currentMonth)
+                ))
+            .OrderBy(f => f.EffectiveYear)
+            .ThenBy(f => f.EffectiveMonth)
+            .FirstOrDefaultAsync();
+
+        var hasAffectedPayments = await _context.Payments
+            .AnyAsync(p =>
+                p.ClassId == id &&
+                (
+                    p.Year > currentYear ||
+                    (p.Year == currentYear &&
+                     p.Month >= currentMonth)
+                ) &&
+                (
+                    nextChange == null ||
+                    p.Year < nextChange.EffectiveYear ||
+                    (p.Year == nextChange.EffectiveYear &&
+                     p.Month < nextChange.EffectiveMonth)
+                ));
+
+        if (hasAffectedPayments)
         {
-            if (string.IsNullOrWhiteSpace(request.Name))
-            {
-                return BadRequest(
-                    "Class name is required."
-                );
-            }
-
-            if (request.MonthlyFee < 0)
-            {
-                return BadRequest(
-                    "Monthly fee cannot be negative."
-                );
-            }
-
-            var classItem =
-                await _context.Classes.FindAsync(id);
-
-            if (classItem == null)
-            {
-                return NotFound(
-                    "Class not found."
-                );
-            }
-
-            classItem.Name = request.Name;
-            classItem.Subject = request.Subject;
-            classItem.TeacherName =
-                request.TeacherName;
-            classItem.MonthlyFee =
-                request.MonthlyFee;
-            classItem.Day = request.Day;
-            classItem.StartTime =
-                request.StartTime;
-
-            classItem.UpdatedAt =
-                DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-
-            return Ok(
-                ToClassResponse(classItem)
+            return Conflict(
+                "Cannot change the current monthly fee " +
+                "because payments already exist in " +
+                "the affected period."
             );
         }
+
+        // Find exact current-month history record.
+        var thisMonthFee = await _context.ClassMonthlyFees
+            .FirstOrDefaultAsync(f =>
+                f.ClassId == id &&
+                f.EffectiveYear == currentYear &&
+                f.EffectiveMonth == currentMonth);
+
+        if (thisMonthFee != null)
+        {
+            thisMonthFee.Amount = request.MonthlyFee;
+        }
+        else
+        {
+            // Create a new current-month fee change.
+            _context.ClassMonthlyFees.Add(
+                new ClassMonthlyFee
+                {
+                    ClassId = id,
+                    EffectiveYear = currentYear,
+                    EffectiveMonth = currentMonth,
+                    Amount = request.MonthlyFee,
+                    CreatedAt = DateTime.UtcNow
+                }
+            );
+        }
+
+        classItem.MonthlyFee = request.MonthlyFee;
+    }
+
+    classItem.Name = request.Name;
+    classItem.Subject = request.Subject;
+    classItem.TeacherName = request.TeacherName;
+    classItem.Day = request.Day;
+    classItem.StartTime = request.StartTime;
+    classItem.UpdatedAt = DateTime.UtcNow;
+
+    await _context.SaveChangesAsync();
+
+    return Ok(ToClassResponse(classItem));
+}
+
 
         // =========================================
         // DELETE: api/classes/{id}

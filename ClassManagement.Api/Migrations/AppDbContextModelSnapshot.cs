@@ -39,6 +39,13 @@ namespace ClassManagement.Api.Migrations
                     b.Property<int>("ClassId")
                         .HasColumnType("integer");
 
+                    b.Property<string>("SessionType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("Regular");
+
                     b.Property<int>("StudentId")
                         .HasColumnType("integer");
 
@@ -91,6 +98,82 @@ namespace ClassManagement.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Classes");
+                });
+
+            modelBuilder.Entity("ClassManagement.Api.Models.ClassDailyRevenueShare", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ClassId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("ClassPercentage")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("TeacherPercentage")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClassId", "Date")
+                        .IsUnique();
+
+                    b.ToTable("ClassDailyRevenueShares");
+                });
+
+            modelBuilder.Entity("ClassManagement.Api.Models.ClassMonthlyFee", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<int>("ClassId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("EffectiveMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EffectiveYear")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClassId", "EffectiveYear", "EffectiveMonth")
+                        .IsUnique();
+
+                    b.ToTable("ClassMonthlyFees", t =>
+                        {
+                            t.HasCheckConstraint("CK_ClassMonthlyFees_Amount", "\"Amount\" >= 0");
+
+                            t.HasCheckConstraint("CK_ClassMonthlyFees_EffectiveMonth", "\"EffectiveMonth\" BETWEEN 1 AND 12");
+                        });
                 });
 
             modelBuilder.Entity("ClassManagement.Api.Models.Enrollment", b =>
@@ -312,6 +395,17 @@ namespace ClassManagement.Api.Migrations
                     b.Navigation("Student");
                 });
 
+            modelBuilder.Entity("ClassManagement.Api.Models.ClassMonthlyFee", b =>
+                {
+                    b.HasOne("ClassManagement.Api.Models.Class", "Class")
+                        .WithMany("MonthlyFeeHistory")
+                        .HasForeignKey("ClassId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Class");
+                });
+
             modelBuilder.Entity("ClassManagement.Api.Models.Enrollment", b =>
                 {
                     b.HasOne("ClassManagement.Api.Models.Class", "Class")
@@ -371,6 +465,8 @@ namespace ClassManagement.Api.Migrations
 
             modelBuilder.Entity("ClassManagement.Api.Models.Class", b =>
                 {
+                    b.Navigation("MonthlyFeeHistory");
+
                     b.Navigation("UserClasses");
                 });
 

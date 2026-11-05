@@ -1,8 +1,11 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+
+type SessionType = "Regular" | "Extra";
 
 type ClassItem = {
   id: number;
@@ -36,6 +39,7 @@ type Attendance = {
   className: string;
   attendanceDate: string;
   checkInTime: string;
+  sessionType: SessionType;
 };
 
 type Student = {
@@ -50,159 +54,69 @@ type Student = {
   isActive: boolean;
 };
 
+function getToday() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function AttendancePage() {
   const router = useRouter();
 
-  const currentYear = new Date().getFullYear();
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [students, setStudents] = useState<Enrollment[]>([]);
+  const [attendances, setAttendances] = useState<Attendance[]>([]);
 
-  const getToday = () => {
-    const now = new Date();
+  const [sessionType, setSessionType] =
+    useState<SessionType>("Regular");
 
-    const year = now.getFullYear();
-    const month = String(
-      now.getMonth() + 1
-    ).padStart(2, "0");
-
-    const day = String(
-      now.getDate()
-    ).padStart(2, "0");
-
-    return `${year}-${month}-${day}`;
-  };
-
-  // =========================================
-  // Data
-  // =========================================
-  const [classes, setClasses] =
-    useState<ClassItem[]>([]);
-
-  const [students, setStudents] =
-    useState<Enrollment[]>([]);
-
-  const [attendances, setAttendances] =
-    useState<Attendance[]>([]);
-
-  // =========================================
-  // Filters
-  // =========================================
-  const [
-    selectedClassId,
-    setSelectedClassId,
-  ] = useState("");
-
-  const [
-    selectedStudentId,
-    setSelectedStudentId,
-  ] = useState("");
-
-  const [
-    academicYear,
-    setAcademicYear,
-  ] = useState(
-    currentYear.toString()
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [academicYear, setAcademicYear] = useState(
+    new Date().getFullYear().toString()
   );
+  const [selectedDate, setSelectedDate] = useState(getToday());
 
-  const [
-    selectedDate,
-    setSelectedDate,
-  ] = useState(getToday());
+  const [loading, setLoading] = useState(true);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
+  const [marking, setMarking] = useState(false);
 
-  // =========================================
-  // Loading
-  // =========================================
-  const [loading, setLoading] =
-    useState(true);
+  const [studentCode, setStudentCode] = useState("");
+  const [searchedStudent, setSearchedStudent] =
+    useState<Student | null>(null);
+  const [searchingStudent, setSearchingStudent] = useState(false);
+  const [markingCodeStudent, setMarkingCodeStudent] = useState(false);
 
-  const [
-    loadingStudents,
-    setLoadingStudents,
-  ] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [warning, setWarning] = useState("");
 
-  const [
-    loadingAttendance,
-    setLoadingAttendance,
-  ] = useState(false);
-
-  const [marking, setMarking] =
-    useState(false);
-
-  // =========================================
-  // Messages
-  // =========================================
-  const [error, setError] =
-    useState("");
-
-  const [success, setSuccess] =
-    useState("");
-
-  const [warning, setWarning] =
-    useState("");
-
-  // =========================================
-  // Student Code Search
-  // =========================================
-  const [
-    studentCode,
-    setStudentCode,
-  ] = useState("");
-
-  const [
-    searchedStudent,
-    setSearchedStudent,
-  ] = useState<Student | null>(null);
-
-  const [
-    searchingStudent,
-    setSearchingStudent,
-  ] = useState(false);
-
-  const [
-    markingCodeStudent,
-    setMarkingCodeStudent,
-  ] = useState(false);
-
-  // =========================================
-  // Clear Messages
-  // =========================================
   const clearMessages = () => {
     setError("");
     setSuccess("");
     setWarning("");
   };
 
-  // =========================================
-  // Load Classes
-  // =========================================
   useEffect(() => {
     const loadClasses = async () => {
       try {
         setLoading(true);
-
-        const response =
-          await api.get(
-            "/api/classes"
-          );
-
+        const response = await api.get<ClassItem[]>("/api/classes");
         setClasses(response.data);
       } catch {
-        setError(
-          "Failed to load classes."
-        );
+        setError("Failed to load classes.");
       } finally {
         setLoading(false);
       }
     };
 
-    loadClasses();
+    void loadClasses();
   }, []);
 
-  // =========================================
-  // Load Enrolled Students
-  // =========================================
-  const loadStudents = async (
-    classId: string,
-    year: string
-  ) => {
+  const loadStudents = async (classId: string, year: string) => {
     if (!classId || !year) {
       setStudents([]);
       return;
@@ -211,30 +125,20 @@ export default function AttendancePage() {
     try {
       setLoadingStudents(true);
 
-      const response =
-        await api.get(
-          `/api/enrollments/class/${classId}/year/${year}`
-        );
+      const response = await api.get<Enrollment[]>(
+        `/api/enrollments/class/${classId}/year/${year}`
+      );
 
       setStudents(response.data);
     } catch {
       setStudents([]);
-
-      setError(
-        "Failed to load enrolled students."
-      );
+      setError("Failed to load enrolled students.");
     } finally {
       setLoadingStudents(false);
     }
   };
 
-  // =========================================
-  // Load Attendance
-  // =========================================
-  const loadAttendance = async (
-    classId: string,
-    date: string
-  ) => {
+  const loadAttendance = async (classId: string, date: string) => {
     if (!classId || !date) {
       setAttendances([]);
       return;
@@ -243,36 +147,41 @@ export default function AttendancePage() {
     try {
       setLoadingAttendance(true);
 
-      const response =
-        await api.get(
-          `/api/attendance/class/${classId}/date/${date}`
-        );
+      const response = await api.get<Attendance[]>(
+        `/api/attendance/class/${classId}/date/${date}`
+      );
 
       setAttendances(response.data);
     } catch {
       setAttendances([]);
-
-      setError(
-        "Failed to load attendance records."
-      );
+      setError("Failed to load attendance records.");
     } finally {
       setLoadingAttendance(false);
     }
   };
 
-  // =========================================
-  // Class Change
-  // =========================================
+  const handleSessionTypeChange = (type: SessionType) => {
+    if (marking || markingCodeStudent || searchingStudent) return;
+
+    setSessionType(type);
+    setSelectedClassId("");
+    setSelectedStudentId("");
+    setStudentCode("");
+    setSearchedStudent(null);
+    setStudents([]);
+    setAttendances([]);
+    clearMessages();
+  };
+
   const handleClassChange = async (
     e: React.ChangeEvent<HTMLSelectElement>
   ) => {
-    const classId =
-      e.target.value;
+    const classId = e.target.value;
 
     setSelectedClassId(classId);
     setSelectedStudentId("");
+    setStudentCode("");
     setSearchedStudent(null);
-
     clearMessages();
 
     if (!classId) {
@@ -282,350 +191,229 @@ export default function AttendancePage() {
     }
 
     await Promise.all([
-      loadStudents(
-        classId,
-        academicYear
-      ),
-
-      loadAttendance(
-        classId,
-        selectedDate
-      ),
+      loadStudents(classId, academicYear),
+      loadAttendance(classId, selectedDate),
     ]);
   };
 
-  // =========================================
-  // Academic Year Change
-  // =========================================
-  const handleAcademicYearChange =
-    async (
-      e: React.ChangeEvent<HTMLInputElement>
-    ) => {
-      const year =
-        e.target.value;
-
-      setAcademicYear(year);
-      setSelectedStudentId("");
-      setSearchedStudent(null);
-
-      clearMessages();
-
-      if (
-        selectedClassId &&
-        Number(year) >= 2000 &&
-        Number(year) <= 2100
-      ) {
-        await loadStudents(
-          selectedClassId,
-          year
-        );
-      } else {
-        setStudents([]);
-      }
-    };
-
-  // =========================================
-  // Attendance Date Change
-  // =========================================
-  const handleDateChange = async (
+  const handleAcademicYearChange = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
-    const date =
-      e.target.value;
+    const year = e.target.value;
 
-    setSelectedDate(date);
-
+    setAcademicYear(year);
+    setSelectedStudentId("");
+    setSearchedStudent(null);
     clearMessages();
 
     if (
       selectedClassId &&
-      date
+      Number(year) >= 2000 &&
+      Number(year) <= 2100
     ) {
-      await loadAttendance(
-        selectedClassId,
-        date
-      );
+      await loadStudents(selectedClassId, year);
+    } else {
+      setStudents([]);
+    }
+  };
+
+  const handleDateChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const date = e.target.value;
+
+    setSelectedDate(date);
+    clearMessages();
+
+    if (selectedClassId && date) {
+      await loadAttendance(selectedClassId, date);
     } else {
       setAttendances([]);
     }
   };
 
-  // =========================================
-  // Mark Attendance - Dropdown
-  // =========================================
-  const handleMarkAttendance =
-    async (
-      e: React.FormEvent<HTMLFormElement>
-    ) => {
-      e.preventDefault();
-
-      clearMessages();
-
-      if (!selectedClassId) {
-        setError(
-          "Please select a class."
-        );
-        return;
-      }
-
-      if (!selectedStudentId) {
-        setError(
-          "Please select a student."
-        );
-        return;
-      }
-
-      try {
-        setMarking(true);
-
-        const response =
-          await api.post(
-            "/api/attendance",
-            {
-              studentId: Number(
-                selectedStudentId
-              ),
-
-              classId: Number(
-                selectedClassId
-              ),
-            }
-          );
-
-        setSuccess(
-          `Attendance marked successfully for ${response.data.studentName}.`
-        );
-
-        setSelectedStudentId(
-          ""
-        );
-
-        await loadAttendance(
-          selectedClassId,
-          selectedDate
-        );
-      } catch (error: any) {
-        handleAttendanceError(
-          error
-        );
-
-        await loadAttendance(
-          selectedClassId,
-          selectedDate
-        );
-      } finally {
-        setMarking(false);
-      }
+  const handleAttendanceError = (err: unknown) => {
+    const errorData = err as {
+      response?: {
+        status?: number;
+        data?: string | { message?: string };
+      };
     };
 
-  // =========================================
-  // Search Student By Student Code
-  // =========================================
-  const handleStudentCodeSearch =
-    async (
-      e: React.FormEvent<HTMLFormElement>
-    ) => {
-      e.preventDefault();
-
-      clearMessages();
-      setSearchedStudent(null);
-
-      if (!selectedClassId) {
-        setError(
-          "Please select a class first."
-        );
-        return;
-      }
-
-      const code =
-        studentCode
-          .trim()
-          .toUpperCase();
-
-      if (!code) {
-        setError(
-          "Please enter a student code."
-        );
-        return;
-      }
-
-      try {
-        setSearchingStudent(true);
-
-        const response =
-          await api.get(
-            `/api/students/code/${encodeURIComponent(
-              code
-            )}`
-          );
-
-        const student: Student =
-          response.data;
-
-        const enrollment =
-          students.find(
-            (item) =>
-              item.studentId ===
-              student.id
-          );
-
-        if (!enrollment) {
-          setWarning(
-            `${student.studentCode} is not enrolled in the selected class for ${academicYear}.`
-          );
-
-          setSearchedStudent(
-            null
-          );
-
-          return;
-        }
-
-        setSearchedStudent(
-          student
-        );
-      } catch (error: any) {
-        const status =
-          error.response?.status;
-
-        if (status === 404) {
-          setError(
-            "Student not found."
-          );
-        } else {
-          setError(
-            "Failed to search student."
-          );
-        }
-      } finally {
-        setSearchingStudent(
-          false
-        );
-      }
-    };
-
-  // =========================================
-  // Mark Attendance - Student Code
-  // =========================================
-  const handleCodeStudentAttendance =
-    async () => {
-      if (!searchedStudent) {
-        return;
-      }
-
-      clearMessages();
-
-      if (!selectedClassId) {
-        setError(
-          "Please select a class."
-        );
-        return;
-      }
-
-      try {
-        setMarkingCodeStudent(
-          true
-        );
-
-        const response =
-          await api.post(
-            "/api/attendance",
-            {
-              studentId:
-                searchedStudent.id,
-
-              classId: Number(
-                selectedClassId
-              ),
-            }
-          );
-
-        setSuccess(
-          `Attendance marked successfully for ${response.data.studentName}.`
-        );
-
-        setStudentCode("");
-        setSearchedStudent(null);
-
-        await loadAttendance(
-          selectedClassId,
-          selectedDate
-        );
-      } catch (error: any) {
-        handleAttendanceError(
-          error
-        );
-
-        await loadAttendance(
-          selectedClassId,
-          selectedDate
-        );
-      } finally {
-        setMarkingCodeStudent(
-          false
-        );
-      }
-    };
-
-  // =========================================
-  // Attendance Error Handler
-  // =========================================
-  const handleAttendanceError = (
-    error: any
-  ) => {
-    const status =
-      error.response?.status;
-
-    const responseData =
-      error.response?.data;
+    const status = errorData.response?.status;
+    const data = errorData.response?.data;
 
     const message =
-      typeof responseData ===
-      "string"
-        ? responseData
-        : responseData?.message ||
-          "Failed to mark attendance.";
+      typeof data === "string"
+        ? data
+        : data?.message || "Failed to mark attendance.";
 
     if (
       status === 400 &&
-      message
-        .toLowerCase()
-        .includes(
-          "attendance already marked"
-        )
+      message.toLowerCase().includes("attendance already marked")
     ) {
       setWarning(
-        "Attendance has already been marked for this student today."
+        "Attendance already marked for this student, class and date. " +
+        "Regular and Extra cannot both be marked on the same day."
       );
     } else {
       setError(message);
     }
   };
 
-  // =========================================
-  // Format Check-In Time
-  // =========================================
-  const formatTime = (
-    dateTime: string
+  const handleMarkAttendance = async (
+    e: React.FormEvent<HTMLFormElement>
   ) => {
-    if (!dateTime) {
-      return "-";
+    e.preventDefault();
+    clearMessages();
+
+    if (!selectedClassId) {
+      setError("Please select a class.");
+      return;
     }
 
-    return new Date(
-      dateTime
-    ).toLocaleTimeString(
-      "en-LK",
-      {
-        hour: "2-digit",
-        minute: "2-digit",
-      }
-    );
+    if (!selectedStudentId) {
+      setError("Please select a student.");
+      return;
+    }
+
+    if (selectedDate !== getToday()) {
+      setError("Attendance can only be marked for today.");
+      return;
+    }
+
+    try {
+      setMarking(true);
+
+      const response = await api.post("/api/attendance", {
+        studentId: Number(selectedStudentId),
+        classId: Number(selectedClassId),
+        sessionType,
+      });
+
+      setSuccess(
+        `${response.data.studentName} - ${sessionType} attendance marked successfully.`
+      );
+
+      setSelectedStudentId("");
+    } catch (err: unknown) {
+      handleAttendanceError(err);
+    } finally {
+      await loadAttendance(selectedClassId, selectedDate);
+      setMarking(false);
+    }
   };
 
-  // =========================================
-  // Loading Page
-  // =========================================
+  const handleStudentCodeSearch = async (
+    e: React.FormEvent<HTMLFormElement>
+  ) => {
+    e.preventDefault();
+    clearMessages();
+    setSearchedStudent(null);
+
+    if (!selectedClassId) {
+      setError("Please select a class first.");
+      return;
+    }
+
+    const code = studentCode.trim().toUpperCase();
+
+    if (!code) {
+      setError("Please enter a student code.");
+      return;
+    }
+
+    try {
+      setSearchingStudent(true);
+
+      const response = await api.get<Student>(
+        `/api/students/code/${encodeURIComponent(code)}`
+      );
+
+      const student = response.data;
+
+      const enrollment = students.find(
+        (item) => item.studentId === student.id
+      );
+
+      if (!enrollment) {
+        setWarning(
+          `${student.studentCode} is not enrolled in this class for ${academicYear}.`
+        );
+        return;
+      }
+
+      setSearchedStudent(student);
+    } catch (err: unknown) {
+      const errorData = err as {
+        response?: { status?: number };
+      };
+
+      if (errorData.response?.status === 404) {
+        setError("Student not found.");
+      } else {
+        setError("Failed to search student.");
+      }
+    } finally {
+      setSearchingStudent(false);
+    }
+  };
+
+  const handleCodeStudentAttendance = async () => {
+    if (!searchedStudent || !selectedClassId) return;
+
+    clearMessages();
+
+    if (selectedDate !== getToday()) {
+      setError("Attendance can only be marked for today.");
+      return;
+    }
+
+    try {
+      setMarkingCodeStudent(true);
+
+      const response = await api.post("/api/attendance", {
+        studentId: searchedStudent.id,
+        classId: Number(selectedClassId),
+        sessionType,
+      });
+
+      setSuccess(
+        `${response.data.studentName} - ${sessionType} attendance marked successfully.`
+      );
+
+      setStudentCode("");
+      setSearchedStudent(null);
+    } catch (err: unknown) {
+      handleAttendanceError(err);
+    } finally {
+      await loadAttendance(selectedClassId, selectedDate);
+      setMarkingCodeStudent(false);
+    }
+  };
+
+  const formatTime = (dateTime: string) => {
+    if (!dateTime) return "-";
+
+    return new Date(dateTime).toLocaleTimeString("en-LK", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const inputClass =
+    "w-full rounded-lg border border-gray-300 bg-white px-4 py-3 " +
+    "font-medium text-gray-950 outline-none focus:border-blue-600 " +
+    "focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100";
+
+  const regularCount = attendances.filter(
+    (a) => a.sessionType !== "Extra"
+  ).length;
+
+  const extraCount = attendances.filter(
+    (a) => a.sessionType === "Extra"
+  ).length;
+
   if (loading) {
     return (
       <div className="flex min-h-[300px] items-center justify-center">
@@ -638,15 +426,12 @@ export default function AttendancePage() {
 
   return (
     <div className="space-y-6">
-      {/* =====================================
-          Header
-          ===================================== */}
+      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-950">
             Attendance
           </h1>
-
           <p className="mt-2 text-gray-600">
             Mark and manage daily student attendance
           </p>
@@ -654,75 +439,80 @@ export default function AttendancePage() {
 
         <button
           type="button"
-          onClick={() =>
-            router.push(
-              "/dashboard/attendance/qr"
-            )
-          }
-          className="inline-flex items-center justify-center rounded-lg bg-blue-700 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-800"
+          onClick={() => router.push("/dashboard/attendance/qr")}
+          className="rounded-lg bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800"
         >
           Scan QR
         </button>
       </div>
 
-      {/* =====================================
-          Attendance Filters
-          ===================================== */}
+      {/* Session Type */}
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="mb-5">
-          <h2 className="text-xl font-bold text-gray-950">
-            Attendance Filters
-          </h2>
+        <h2 className="mb-4 text-xl font-bold text-gray-950">
+          Select Attendance Type
+        </h2>
 
-          <p className="mt-1 text-sm text-gray-600">
-            Select class, academic year and attendance date
-          </p>
+        <div className="grid grid-cols-2 gap-3">
+          {(["Regular", "Extra"] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              disabled={marking || markingCodeStudent || searchingStudent}
+              onClick={() => handleSessionTypeChange(type)}
+              className={`rounded-xl border-2 px-4 py-4 font-semibold transition disabled:opacity-50 ${
+                sessionType === type
+                  ? "border-blue-600 bg-blue-600 text-white"
+                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              {type} Class
+            </button>
+          ))}
         </div>
 
-        <div className="grid gap-5 md:grid-cols-3">
-          {/* Class */}
+        <p className="mt-3 text-sm text-gray-600">
+          {sessionType === "Regular"
+            ? "Regular attendance counts towards the monthly fee warning."
+            : "Extra attendance does not increase the regular attendance count."}
+        </p>
+
+        <p className="mt-2 text-sm font-medium text-amber-700">
+          Only one attendance is allowed per student, class and day.
+        </p>
+      </div>
+
+      {/* Attendance Filters */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <h2 className="text-xl font-bold text-gray-950">
+          Attendance Filters
+        </h2>
+
+        <p className="mt-1 text-sm text-gray-600">
+          Select class, academic year and attendance date
+        </p>
+
+        <div className="mt-5 grid gap-5 md:grid-cols-3">
           <div>
             <label className="mb-2 block text-sm font-semibold text-gray-900">
               Class
             </label>
 
             <select
-              value={
-                selectedClassId
-              }
-              onChange={
-                handleClassChange
-              }
-              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-950 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+              value={selectedClassId}
+              onChange={handleClassChange}
+              className={inputClass}
             >
-              <option value="">
-                Select Class
-              </option>
+              <option value="">Select Class</option>
 
-              {classes.map(
-                (classItem) => (
-                  <option
-                    key={
-                      classItem.id
-                    }
-                    value={
-                      classItem.id
-                    }
-                  >
-                    {
-                      classItem.name
-                    }
-
-                    {classItem.subject
-                      ? ` - ${classItem.subject}`
-                      : ""}
-                  </option>
-                )
-              )}
+              {classes.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                  {item.subject ? ` - ${item.subject}` : ""}
+                </option>
+              ))}
             </select>
           </div>
 
-          {/* Academic Year */}
           <div>
             <label className="mb-2 block text-sm font-semibold text-gray-900">
               Academic Year
@@ -732,17 +522,12 @@ export default function AttendancePage() {
               type="number"
               min="2000"
               max="2100"
-              value={
-                academicYear
-              }
-              onChange={
-                handleAcademicYearChange
-              }
-              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-medium text-gray-950 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+              value={academicYear}
+              onChange={handleAcademicYearChange}
+              className={inputClass}
             />
           </div>
 
-          {/* Date */}
           <div>
             <label className="mb-2 block text-sm font-semibold text-gray-900">
               Attendance Date
@@ -750,80 +535,60 @@ export default function AttendancePage() {
 
             <input
               type="date"
-              value={
-                selectedDate
-              }
+              value={selectedDate}
               max={getToday()}
-              onChange={
-                handleDateChange
-              }
-              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-medium text-gray-950 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+              onChange={handleDateChange}
+              className={inputClass}
             />
           </div>
         </div>
 
-        {/* Filter Summary */}
         {selectedClassId && (
           <div className="mt-5 flex flex-wrap gap-2 border-t border-gray-100 pt-4">
             <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
-              Academic Year:{" "}
-              {academicYear}
+              Type: {sessionType}
             </span>
 
             <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
-              Date:{" "}
-              {selectedDate}
+              Academic Year: {academicYear}
+            </span>
+
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+              Date: {selectedDate}
             </span>
 
             <span className="rounded-full bg-green-50 px-3 py-1 text-sm font-semibold text-green-700">
-              Enrolled Students:{" "}
-              {students.length}
+              Enrolled Students: {students.length}
             </span>
           </div>
         )}
       </div>
 
-      {/* =====================================
-          Student Code Attendance
-          ===================================== */}
+      {/* Student Code Search */}
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div>
-          <h2 className="text-xl font-bold text-gray-950">
-            Student Code Attendance
-          </h2>
+        <h2 className="text-xl font-bold text-gray-950">
+          Student Code Attendance
+        </h2>
 
-          <p className="mt-1 text-sm text-gray-600">
-            Enter the student code to find the student and mark attendance
-          </p>
-        </div>
+        <p className="mt-1 text-sm text-gray-600">
+          Enter a student code to find the student and mark attendance
+        </p>
 
         <form
-          onSubmit={
-            handleStudentCodeSearch
-          }
+          onSubmit={handleStudentCodeSearch}
           className="mt-5 flex flex-col gap-4 md:flex-row"
         >
           <input
             type="text"
-            value={
-              studentCode
-            }
+            value={studentCode}
             onChange={(e) => {
-              setStudentCode(
-                e.target.value.toUpperCase()
-              );
-
-              setSearchedStudent(
-                null
-              );
-
+              setStudentCode(e.target.value.toUpperCase());
+              setSearchedStudent(null);
               clearMessages();
             }}
             placeholder="Example: STD-0003"
-            disabled={
-              !selectedClassId
-            }
-            className="w-full rounded-lg border border-gray-300 px-4 py-3 font-medium text-gray-950 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-gray-100 md:max-w-xl"
+            disabled={!selectedClassId}
+            className={`${inputClass} md:max-w-xl`}
           />
 
           <button
@@ -831,119 +596,89 @@ export default function AttendancePage() {
             disabled={
               !selectedClassId ||
               !studentCode.trim() ||
-              searchingStudent
+              searchingStudent ||
+              loadingStudents
             }
-            className="min-w-[140px] rounded-lg bg-slate-800 px-6 py-3 font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:bg-gray-400"
+            className="min-w-[140px] rounded-lg bg-slate-800 px-6 py-3 font-semibold text-white hover:bg-slate-900 disabled:bg-gray-400"
           >
-            {searchingStudent
-              ? "Searching..."
-              : "Search"}
+            {searchingStudent ? "Searching..." : "Search"}
           </button>
         </form>
 
-        {/* Found Student */}
         {searchedStudent && (
           <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <span className="inline-block rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
+                <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
                   Student Found
                 </span>
 
                 <h3 className="mt-3 text-lg font-bold text-gray-950">
-                  {
-                    searchedStudent.studentCode
-                  }
+                  {searchedStudent.studentCode}
                 </h3>
 
                 <p className="mt-1 font-medium text-gray-800">
-                  {
-                    searchedStudent.firstName
-                  }{" "}
-                  {
-                    searchedStudent.lastName ??
-                    ""
-                  }
+                  {searchedStudent.firstName}{" "}
+                  {searchedStudent.lastName ?? ""}
                 </p>
 
                 {searchedStudent.school && (
                   <p className="mt-1 text-sm text-gray-600">
-                    School:{" "}
-                    {
-                      searchedStudent.school
-                    }
+                    School: {searchedStudent.school}
                   </p>
                 )}
+
+                <p className="mt-2 text-sm font-semibold text-blue-700">
+                  Selected Type: {sessionType}
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={
-                  handleCodeStudentAttendance
-                }
+                onClick={handleCodeStudentAttendance}
                 disabled={
                   markingCodeStudent ||
-                  selectedDate !==
-                    getToday()
+                  marking ||
+                  selectedDate !== getToday()
                 }
-                className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white hover:bg-green-700 disabled:bg-gray-400"
               >
                 {markingCodeStudent
                   ? "Marking..."
-                  : "Mark Present"}
+                  : `Mark ${sessionType}`}
               </button>
             </div>
           </div>
         )}
 
-        {selectedDate !==
-          getToday() && (
+        {selectedDate !== getToday() && (
           <p className="mt-4 text-sm font-medium text-amber-700">
-            Attendance can only be
-            marked for today. You can
-            still view previous attendance
-            records.
+            Attendance can only be marked for today. Previous records
+            can still be viewed.
           </p>
         )}
       </div>
 
-      {/* =====================================
-          Manual Attendance
-          ===================================== */}
+      {/* Manual Attendance */}
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div>
-          <h2 className="text-xl font-bold text-gray-950">
-            Manual Attendance
-          </h2>
+        <h2 className="text-xl font-bold text-gray-950">
+          Manual Attendance
+        </h2>
 
-          <p className="mt-1 text-sm text-gray-600">
-            Select an enrolled student to mark today&apos;s attendance
-          </p>
-        </div>
+        <p className="mt-1 text-sm text-gray-600">
+          Select an enrolled student to mark today&apos;s attendance
+        </p>
 
-        <form
-          onSubmit={
-            handleMarkAttendance
-          }
-          className="mt-5"
-        >
+        <form onSubmit={handleMarkAttendance} className="mt-5">
           <div className="flex flex-col gap-4 md:flex-row">
             <select
-              value={
-                selectedStudentId
-              }
+              value={selectedStudentId}
               onChange={(e) => {
-                setSelectedStudentId(
-                  e.target.value
-                );
-
+                setSelectedStudentId(e.target.value);
                 clearMessages();
               }}
-              disabled={
-                !selectedClassId ||
-                loadingStudents
-              }
-              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-medium text-gray-950 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-gray-100 md:max-w-xl"
+              disabled={!selectedClassId || loadingStudents}
+              className={`${inputClass} md:max-w-xl`}
             >
               <option value="">
                 {loadingStudents
@@ -951,63 +686,44 @@ export default function AttendancePage() {
                   : "Select Student"}
               </option>
 
-              {students.map(
-                (student) => (
-                  <option
-                    key={
-                      student.studentId
-                    }
-                    value={
-                      student.studentId
-                    }
-                  >
-                    {
-                      student.studentCode
-                    }{" "}
-                    -{" "}
-                    {
-                      student.studentName
-                    }
-                  </option>
-                )
-              )}
+              {students.map((student) => (
+                <option
+                  key={student.studentId}
+                  value={student.studentId}
+                >
+                  {student.studentCode} - {student.studentName}
+                </option>
+              ))}
             </select>
 
             <button
               type="submit"
               disabled={
                 marking ||
+                markingCodeStudent ||
                 !selectedClassId ||
                 !selectedStudentId ||
-                selectedDate !==
-                  getToday()
+                selectedDate !== getToday()
               }
-              className="min-w-[170px] rounded-lg bg-blue-700 px-6 py-3 font-semibold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+              className="min-w-[170px] rounded-lg bg-blue-700 px-6 py-3 font-semibold text-white hover:bg-blue-800 disabled:bg-gray-400"
             >
-              {marking
-                ? "Marking..."
-                : "Mark Present"}
+              {marking ? "Marking..." : `Mark ${sessionType}`}
             </button>
           </div>
         </form>
 
         {selectedClassId &&
           !loadingStudents &&
-          students.length ===
-            0 && (
+          students.length === 0 && (
             <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
               <p className="text-sm font-medium text-amber-800">
-                No students enrolled
-                in this class for{" "}
-                {academicYear}.
+                No students enrolled in this class for {academicYear}.
               </p>
             </div>
           )}
       </div>
 
-      {/* =====================================
-          Messages
-          ===================================== */}
+      {/* Messages */}
       {success && (
         <div className="rounded-xl border border-green-200 bg-green-50 p-4 font-medium text-green-700">
           ✓ {success}
@@ -1026,11 +742,8 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* =====================================
-          Attendance List
-          ===================================== */}
+      {/* Attendance List */}
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        {/* Table Header */}
         <div className="flex flex-col gap-4 border-b border-gray-200 p-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-xl font-bold text-gray-950">
@@ -1038,40 +751,44 @@ export default function AttendancePage() {
             </h2>
 
             <p className="mt-1 text-sm text-gray-600">
-              Attendance records for{" "}
-              {selectedDate}
+              Attendance records for {selectedDate}
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <span className="rounded-full bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700">
-              Total Present:{" "}
-              {attendances.length}
+              Total Present: {attendances.length}
+            </span>
+
+            <span className="rounded-full bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700">
+              Regular: {regularCount}
+            </span>
+
+            <span className="rounded-full bg-orange-50 px-4 py-2 text-sm font-bold text-orange-700">
+              Extra: {extraCount}
             </span>
           </div>
         </div>
 
-        {/* Table */}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px] text-left">
+          <table className="w-full min-w-[850px] text-left">
             <thead className="bg-slate-800 text-white">
               <tr>
                 <th className="px-6 py-4 text-sm font-semibold">
                   Student Code
                 </th>
-
                 <th className="px-6 py-4 text-sm font-semibold">
                   Student Name
                 </th>
-
                 <th className="px-6 py-4 text-sm font-semibold">
                   Class
                 </th>
-
+                <th className="px-6 py-4 text-sm font-semibold">
+                  Class Type
+                </th>
                 <th className="px-6 py-4 text-sm font-semibold">
                   Check-In Time
                 </th>
-
                 <th className="px-6 py-4 text-sm font-semibold">
                   Status
                 </th>
@@ -1082,67 +799,61 @@ export default function AttendancePage() {
               {loadingAttendance ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="px-6 py-12 text-center font-medium text-gray-500"
                   >
                     Loading attendance...
                   </td>
                 </tr>
-              ) : attendances.length >
-                0 ? (
-                attendances.map(
-                  (
-                    attendance,
-                    index
-                  ) => (
-                    <tr
-                      key={
-                        attendance.id
-                      }
-                      className={`border-t border-gray-100 transition hover:bg-blue-50 ${
-                        index % 2 === 0
-                          ? "bg-white"
-                          : "bg-slate-50"
-                      }`}
-                    >
-                      <td className="px-6 py-4">
-                        <span className="rounded-md bg-blue-50 px-3 py-1.5 text-sm font-bold text-blue-700">
-                          {
-                            attendance.studentCode
-                          }
-                        </span>
-                      </td>
+              ) : attendances.length > 0 ? (
+                attendances.map((attendance, index) => (
+                  <tr
+                    key={attendance.id}
+                    className={`border-t border-gray-100 hover:bg-blue-50 ${
+                      index % 2 === 0 ? "bg-white" : "bg-slate-50"
+                    }`}
+                  >
+                    <td className="px-6 py-4">
+                      <span className="rounded-md bg-blue-50 px-3 py-1.5 text-sm font-bold text-blue-700">
+                        {attendance.studentCode}
+                      </span>
+                    </td>
 
-                      <td className="px-6 py-4 font-semibold text-gray-950">
-                        {
-                          attendance.studentName
-                        }
-                      </td>
+                    <td className="px-6 py-4 font-semibold text-gray-950">
+                      {attendance.studentName}
+                    </td>
 
-                      <td className="px-6 py-4 text-gray-700">
-                        {
-                          attendance.className
-                        }
-                      </td>
+                    <td className="px-6 py-4 text-gray-700">
+                      {attendance.className}
+                    </td>
 
-                      <td className="px-6 py-4 font-medium text-gray-700">
-                        {formatTime(
-                          attendance.checkInTime
-                        )}
-                      </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`rounded-full px-3 py-1 text-sm font-semibold ${
+                          attendance.sessionType === "Extra"
+                            ? "bg-orange-100 text-orange-700"
+                            : "bg-blue-100 text-blue-700"
+                        }`}
+                      >
+                        {attendance.sessionType ?? "Regular"}
+                      </span>
+                    </td>
 
-                      <td className="px-6 py-4">
-                        <span className="rounded-full bg-green-100 px-3 py-1.5 text-sm font-bold text-green-700">
-                          Present
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                )
+                    <td className="px-6 py-4 font-medium text-gray-700">
+                      {formatTime(attendance.checkInTime)}
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <span className="rounded-full bg-green-100 px-3 py-1.5 text-sm font-bold text-green-700">
+                        Present
+                      </span>
+                    </td>
+                  </tr>
+                ))
               ) : (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="px-6 py-14 text-center"
                   >
                     <div className="mx-auto max-w-md">
@@ -1154,9 +865,7 @@ export default function AttendancePage() {
 
                       {selectedClassId && (
                         <p className="mt-1 text-sm text-gray-500">
-                          No students
-                          have been marked
-                          present for{" "}
+                          No students have been marked present for{" "}
                           {selectedDate}.
                         </p>
                       )}
